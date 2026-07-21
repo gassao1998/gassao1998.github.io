@@ -1,0 +1,280 @@
+<!--
+  賴晁翔 · portfolio — v3「明亮 creative-agency」(2026-07-21)
+  單一靜態檔、零建置、GitHub Pages 直接上。單一亮色世界。
+  換真作品（都標 TODO）：
+    · 文字 → #writing 的 <li>
+    · 攝影 → #photography 把 .ph 換成 <img src="images/xxx.jpg">
+    · 程式 → #code 的 .proj 卡
+-->
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>賴晁翔 — 作品集</title>
+<meta name="description" content="賴晁翔的作品集：文字、攝影與程式。">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:opsz,wght@12..96,400;12..96,500;12..96,700;12..96,800&display=swap" rel="stylesheet">
+
+<style>
+  :root{
+    --bg:#ffffff; --alt:#f4f1ea; --ink:#111010; --muted:#6b665f; --line:#e7e2d8;
+    --accent:#ff4a1c; --on-accent:#fff;
+    --font:"Bricolage Grotesque", system-ui, "Noto Sans TC", sans-serif;
+    --pad:clamp(1.25rem,5vw,5rem); --r:18px;
+  }
+  *{box-sizing:border-box}
+  html{scroll-behavior:smooth}
+  @media (prefers-reduced-motion:reduce){html{scroll-behavior:auto}}
+  body{margin:0;background:var(--bg);color:var(--ink);font-family:var(--font);line-height:1.5;
+    -webkit-font-smoothing:antialiased;overflow-x:hidden}
+  a{color:inherit;text-decoration:none}
+  ::selection{background:var(--accent);color:var(--on-accent)}
+  h1,h2,h3{letter-spacing:-.02em}
+
+  .btn{display:inline-flex;align-items:center;gap:.5rem;padding:.7rem 1.4rem;border-radius:999px;
+    font-weight:700;font-size:.95rem;transition:transform .2s,background .2s}
+  .btn.solid{background:var(--accent);color:var(--on-accent)}
+  .btn.ghost{border:1.5px solid var(--ink)}
+  .btn:hover{transform:translateY(-2px)}
+
+  /* nav */
+  nav{position:sticky;top:0;z-index:30;display:flex;justify-content:space-between;align-items:center;
+    padding:1rem var(--pad);background:rgba(255,255,255,.85);backdrop-filter:blur(10px);border-bottom:1px solid var(--line)}
+  nav .brand{font-weight:800;font-size:1.15rem}
+  nav .brand b{color:var(--accent)}
+  nav .links{display:flex;gap:1.6rem;align-items:center;font-weight:500;font-size:.95rem}
+  nav .links a:not(.btn):hover{color:var(--accent)}
+  @media (max-width:680px){nav .links a:not(.btn){display:none}}
+
+  /* hero */
+  header{padding:clamp(3rem,9vw,7rem) var(--pad) clamp(2.5rem,6vw,5rem)}
+  .eyebrow{display:inline-flex;align-items:center;gap:.5rem;font-weight:700;font-size:.8rem;
+    letter-spacing:.08em;text-transform:uppercase;color:var(--accent);margin-bottom:1.5rem}
+  .eyebrow::before{content:"";width:26px;height:2px;background:var(--accent)}
+  .hero-h{font-weight:800;font-size:clamp(3rem,9.5vw,8rem);line-height:1.04;margin:0;max-width:22ch}
+  .hero-h .squash{display:inline-block;transform:scaleY(.82);transform-origin:left top}
+  .hero-h mark{background:none;color:var(--accent)}
+  .hero-h .u{text-decoration:underline;text-decoration-color:var(--accent);text-underline-offset:.1em;text-decoration-thickness:.08em}
+  .hero-sub{margin:2rem 0 0;max-width:46ch;font-size:clamp(1.05rem,1.7vw,1.3rem);color:var(--muted)}
+  .hero-cta{display:flex;gap:.8rem;flex-wrap:wrap;margin-top:2.2rem}
+
+  /* marquee */
+  .marquee{background:var(--ink);color:var(--bg);overflow:hidden;display:flex;padding:.9rem 0}
+  .mtrack{flex:0 0 auto;display:flex;align-items:center;
+    animation:sc 30s linear infinite;font-weight:700;font-size:1.1rem}
+  .mtrack span{white-space:nowrap}
+  .mtrack span b{color:var(--accent);margin:0 1.4rem}
+  @keyframes sc{from{transform:translateX(0)}to{transform:translateX(-100%)}}
+  @media (prefers-reduced-motion:reduce){.mtrack{animation:none}}
+
+  /* section */
+  section{padding:clamp(2.5rem,5vw,4.25rem) var(--pad)}
+  section.alt{background:var(--alt)}
+  .sec-head{display:flex;justify-content:space-between;align-items:flex-end;gap:1rem;flex-wrap:wrap;margin-bottom:1.6rem}
+  .sec-head h2{font-weight:800;font-size:clamp(1.4rem,3.2vw,2.2rem);margin:0}
+  .sec-head .lab{font-weight:700;font-size:.8rem;letter-spacing:.08em;text-transform:uppercase;color:var(--muted)}
+
+  /* capabilities */
+  .caps{display:grid;grid-template-columns:repeat(auto-fit,minmax(240px,1fr));gap:1.2rem}
+  .cap{background:var(--bg);border:1px solid var(--line);border-radius:var(--r);padding:1.8rem;
+    transition:transform .25s,box-shadow .25s}
+  .cap:hover{transform:translateY(-4px);box-shadow:0 16px 40px rgba(0,0,0,.08)}
+  .cap .no{font-weight:800;color:var(--accent);font-size:1rem}
+  .cap h3{margin:.8rem 0 .5rem;font-size:1.4rem;font-weight:700}
+  .cap p{margin:0;color:var(--muted);font-size:.95rem}
+
+  /* writing list */
+  .wlist{list-style:none;margin:0;padding:0;border-top:1px solid var(--line)}
+  .wlist li{border-bottom:1px solid var(--line)}
+  .wlist a{display:grid;grid-template-columns:1fr auto;gap:.3rem 1.5rem;align-items:center;
+    padding:1.6rem .3rem;transition:padding .3s,color .2s}
+  .wlist a:hover{padding-left:1.2rem;color:var(--accent)}
+  .wlist h3{grid-column:1;margin:0;font-size:clamp(1.3rem,2.6vw,2rem);font-weight:700}
+  .wlist .m{grid-column:1;font-weight:500;font-size:.9rem;color:var(--muted)}
+  .wlist .y{grid-column:2;grid-row:1/3;font-weight:700;color:var(--muted)}
+  .wlist a:hover .m{color:var(--muted)}
+
+  /* photography */
+  .gallery{columns:3 260px;column-gap:1.1rem}
+  .gallery figure{margin:0 0 1.1rem;break-inside:avoid;cursor:pointer;border-radius:14px;overflow:hidden;position:relative}
+  .gallery img{width:100%;display:block;transition:transform .6s cubic-bezier(.2,.8,.2,1)}
+  .gallery figure:hover img{transform:scale(1.05)}
+  .ph{aspect-ratio:var(--ar,3/4);background:
+    linear-gradient(135deg,#ffd9cc,#ffb59e 45%,var(--accent));display:flex;align-items:flex-end;
+    padding:1rem;font-weight:700;color:#7a2410}
+  figcaption{position:absolute;inset:auto 0 0 0;padding:1rem;color:#fff;font-weight:600;font-size:.9rem;
+    background:linear-gradient(transparent,rgba(0,0,0,.6));opacity:0;transition:.3s}
+  .gallery figure:hover figcaption{opacity:1}
+
+  /* code */
+  .projects{display:grid;grid-template-columns:repeat(auto-fill,minmax(300px,1fr));gap:1.2rem}
+  .proj{background:var(--bg);border:1px solid var(--line);border-radius:var(--r);padding:1.7rem;
+    display:flex;flex-direction:column;gap:1rem;transition:transform .25s,box-shadow .25s,border-color .25s}
+  .proj:hover{transform:translateY(-4px);box-shadow:0 16px 40px rgba(0,0,0,.08);border-color:var(--accent)}
+  .proj h3{margin:0;font-size:1.35rem;font-weight:700;display:flex;justify-content:space-between;gap:.5rem}
+  .proj h3 .a{color:var(--accent)}
+  .proj p{margin:0;flex:1;color:var(--muted);font-size:.95rem}
+  .tags{display:flex;flex-wrap:wrap;gap:.4rem}
+  .tags span{font-size:.75rem;font-weight:600;background:var(--alt);border-radius:999px;padding:.25rem .8rem}
+  section.alt .tags span{background:var(--bg)}
+
+  /* CTA */
+  .cta{background:var(--accent);color:var(--on-accent);border-radius:clamp(20px,4vw,36px);
+    margin:clamp(2rem,5vw,4rem) var(--pad);padding:clamp(3rem,7vw,6rem) clamp(1.5rem,5vw,4rem);text-align:center}
+  .cta h2{font-size:clamp(2rem,6vw,4.5rem);font-weight:800;margin:0 0 1.5rem;line-height:1}
+  .cta .btn.solid{background:var(--ink);color:#fff}
+  footer{padding:2.5rem var(--pad);display:flex;flex-wrap:wrap;justify-content:space-between;gap:1rem;
+    color:var(--muted);font-size:.9rem;border-top:1px solid var(--line);font-weight:500}
+  footer .links{display:flex;gap:1.3rem}
+  footer a:hover{color:var(--accent)}
+
+  /* reveal */
+  .reveal{opacity:0;transform:translateY(22px);transition:opacity .7s ease,transform .7s ease}
+  .reveal.in{opacity:1;transform:none}
+  @media (prefers-reduced-motion:reduce){.reveal{opacity:1;transform:none;transition:none}}
+  :focus-visible{outline:2px solid var(--accent);outline-offset:3px}
+
+  /* lightbox */
+  #lb{position:fixed;inset:0;z-index:80;background:rgba(20,15,12,.9);display:none;align-items:center;
+    justify-content:center;padding:2.5rem;cursor:zoom-out}
+  #lb.open{display:flex}
+  #lb img,#lb .ph{max-width:90vw;max-height:84vh;border-radius:12px}
+  #lb .cap{position:absolute;bottom:1.5rem;left:0;right:0;text-align:center;color:#fff;font-weight:600}
+  #lb .x{position:absolute;top:1.3rem;right:2rem;color:#fff;font-weight:700}
+
+  /* 中英切換 */
+  .lang-toggle{position:fixed;top:1rem;right:1rem;z-index:40;display:flex;gap:.15rem;
+    background:rgba(255,255,255,.82);backdrop-filter:blur(8px);border:1px solid var(--line);
+    border-radius:999px;padding:.22rem;font-weight:700;font-size:.78rem}
+  .lang-toggle span{padding:.28rem .7rem;border-radius:999px;color:var(--muted);cursor:pointer;transition:.2s}
+  .lang-toggle .on{background:var(--accent);color:var(--on-accent)}
+  html.en .t-zh{display:none}
+  html:not(.en) .t-en{display:none}
+</style>
+
+<button class="lang-toggle" id="langToggle" aria-label="切換語言 / Toggle language">
+  <span class="zh-btn">中</span><span class="en-btn">EN</span>
+</button>
+
+<header id="top">
+  <h1 class="hero-h reveal">
+    <span class="squash t-zh">我用文字、影像與<mark>程式</mark>，<span class="u">說故事</span>。</span>
+    <span class="squash t-en">I tell stories with <mark>words</mark>, images &amp; <span class="u">code</span>.</span>
+  </h1>
+  <p class="hero-sub reveal">
+    <span class="t-zh">台大新聞所出身。記者的眼睛、攝影師的手、工程師的腦——把複雜的事講清楚、講好看。</span>
+    <span class="t-en">NTU Journalism. A reporter's eye, a photographer's hand, an engineer's mind — making complex things clear, and good-looking.</span>
+  </p>
+</header>
+
+<div class="marquee" aria-hidden="true">
+  <div class="mtrack">
+    <span class="t-zh">文字<b>✦</b></span><span class="t-zh">攝影<b>✦</b></span><span class="t-zh">程式<b>✦</b></span><span class="t-zh">報導<b>✦</b></span><span class="t-zh">影像<b>✦</b></span><span class="t-zh">設計<b>✦</b></span><span class="t-zh">後製<b>✦</b></span><span class="t-zh">文字<b>✦</b></span><span class="t-zh">攝影<b>✦</b></span><span class="t-zh">程式<b>✦</b></span><span class="t-zh">報導<b>✦</b></span><span class="t-zh">影像<b>✦</b></span><span class="t-zh">設計<b>✦</b></span><span class="t-zh">後製<b>✦</b></span><span class="t-en">Words<b>✦</b></span><span class="t-en">Photo<b>✦</b></span><span class="t-en">Code<b>✦</b></span><span class="t-en">Reporting<b>✦</b></span><span class="t-en">Images<b>✦</b></span><span class="t-en">Design<b>✦</b></span><span class="t-en">Editing<b>✦</b></span><span class="t-en">Words<b>✦</b></span><span class="t-en">Photo<b>✦</b></span><span class="t-en">Code<b>✦</b></span><span class="t-en">Reporting<b>✦</b></span><span class="t-en">Images<b>✦</b></span><span class="t-en">Design<b>✦</b></span><span class="t-en">Editing<b>✦</b></span>
+  </div>
+  <div class="mtrack">
+    <span class="t-zh">文字<b>✦</b></span><span class="t-zh">攝影<b>✦</b></span><span class="t-zh">程式<b>✦</b></span><span class="t-zh">報導<b>✦</b></span><span class="t-zh">影像<b>✦</b></span><span class="t-zh">設計<b>✦</b></span><span class="t-zh">後製<b>✦</b></span><span class="t-zh">文字<b>✦</b></span><span class="t-zh">攝影<b>✦</b></span><span class="t-zh">程式<b>✦</b></span><span class="t-zh">報導<b>✦</b></span><span class="t-zh">影像<b>✦</b></span><span class="t-zh">設計<b>✦</b></span><span class="t-zh">後製<b>✦</b></span><span class="t-en">Words<b>✦</b></span><span class="t-en">Photo<b>✦</b></span><span class="t-en">Code<b>✦</b></span><span class="t-en">Reporting<b>✦</b></span><span class="t-en">Images<b>✦</b></span><span class="t-en">Design<b>✦</b></span><span class="t-en">Editing<b>✦</b></span><span class="t-en">Words<b>✦</b></span><span class="t-en">Photo<b>✦</b></span><span class="t-en">Code<b>✦</b></span><span class="t-en">Reporting<b>✦</b></span><span class="t-en">Images<b>✦</b></span><span class="t-en">Design<b>✦</b></span><span class="t-en">Editing<b>✦</b></span>
+  </div>
+</div>
+
+<!-- 能力 -->
+<section class="alt" id="about">
+  <div class="sec-head reveal">
+    <h2><span class="t-zh">我能做什麼</span><span class="t-en">What I do</span></h2>
+    <span class="lab"><span class="t-zh">What I do</span><span class="t-en">能力</span></span>
+  </div>
+  <div class="caps">
+    <div class="cap reveal"><div class="no">01</div>
+      <h3><span class="t-zh">文字</span><span class="t-en">Words</span></h3>
+      <p><span class="t-zh">深度報導、特稿、評論與散文。把訪談與資料變成讀得下去的故事。</span><span class="t-en">Long-form reporting, features, essays. Turning interviews and data into stories worth reading.</span></p></div>
+    <div class="cap reveal"><div class="no">02</div>
+      <h3><span class="t-zh">攝影</span><span class="t-en">Photography</span></h3>
+      <p><span class="t-zh">紀實與人像。在對的瞬間按下快門，也在暗房與後製把它修對。</span><span class="t-en">Documentary and portraits. Catching the right moment, then getting it right in post.</span></p></div>
+    <div class="cap reveal"><div class="no">03</div>
+      <h3><span class="t-zh">程式</span><span class="t-en">Code</span></h3>
+      <p><span class="t-zh">資料分析、視覺化與小工具。用程式把重複的事自動化、把數字說清楚。</span><span class="t-en">Data analysis, visualization and small tools. Automating the repetitive, making numbers speak.</span></p></div>
+  </div>
+</section>
+
+<!-- 文字 -->
+<section id="writing">
+  <div class="sec-head reveal">
+    <h2><span class="t-zh">文字作品</span><span class="t-en">Writing</span></h2>
+    <span class="lab"><span class="t-zh">Writing</span><span class="t-en">文字</span></span>
+  </div>
+  <ul class="wlist reveal">
+    <!-- TODO: 一篇一個 <li>，有連結就填 href。 -->
+    <li><a href="#"><h3>報導標題或文章名稱</h3><p class="m">刊登媒體 / 專題 · 深度報導</p><span class="y">2025</span></a></li>
+    <li><a href="#"><h3>另一篇作品</h3><p class="m">刊登媒體 · 特稿</p><span class="y">2024</span></a></li>
+    <li><a href="#"><h3>散文 / 評論 / 專欄名</h3><p class="m">發表平台 · 專欄</p><span class="y">2024</span></a></li>
+  </ul>
+</section>
+
+<!-- 程式 -->
+<section class="alt" id="code">
+  <div class="sec-head reveal">
+    <h2><span class="t-zh">程式成果</span><span class="t-en">Code</span></h2>
+    <span class="lab"><span class="t-zh">Code</span><span class="t-en">程式</span></span>
+  </div>
+  <div class="projects">
+    <!-- TODO: 一個專案一張，href 指 repo 或 demo。 -->
+    <a class="proj reveal" href="#"><h3>專案名稱 <span class="a">↗</span></h3><p>做什麼、解決什麼、你負責哪塊；成果數字放這。</p><div class="tags"><span>Python</span><span>資料分析</span><span>視覺化</span></div></a>
+    <a class="proj reveal" href="#"><h3>另一個專案 <span class="a">↗</span></h3><p>簡短描述，技術亮點。</p><div class="tags"><span>JavaScript</span><span>網頁</span></div></a>
+    <a class="proj reveal" href="#"><h3>工具 / 腳本 <span class="a">↗</span></h3><p>自動化了什麼、省了多少事。</p><div class="tags"><span>自動化</span><span>CLI</span></div></a>
+  </div>
+</section>
+
+<!-- 攝影 -->
+<section id="photography">
+  <div class="sec-head reveal">
+    <h2><span class="t-zh">攝影作品</span><span class="t-en">Photography</span></h2>
+    <span class="lab"><span class="t-zh">Photography</span><span class="t-en">攝影</span></span>
+  </div>
+  <div class="gallery reveal">
+    <!-- TODO: 換真圖 → <figure><img src="images/xxx.jpg" alt="..."><figcaption>說明</figcaption></figure> -->
+    <figure><div class="ph" style="--ar:3/4">照片</div><figcaption>作品說明 · 2025</figcaption></figure>
+    <figure><div class="ph" style="--ar:1/1">照片</div><figcaption>作品說明 · 2025</figcaption></figure>
+    <figure><div class="ph" style="--ar:4/5">照片</div><figcaption>作品說明 · 2024</figcaption></figure>
+    <figure><div class="ph" style="--ar:3/2">照片</div><figcaption>作品說明 · 2024</figcaption></figure>
+    <figure><div class="ph" style="--ar:4/5">照片</div><figcaption>作品說明 · 2024</figcaption></figure>
+    <figure><div class="ph" style="--ar:1/1">照片</div><figcaption>作品說明 · 2023</figcaption></figure>
+  </div>
+</section>
+
+<!-- CTA -->
+<div class="cta reveal" id="contact">
+  <h2><span class="t-zh">一起做點酷東西</span><span class="t-en">Let's make something cool</span></h2>
+  <a class="btn solid" href="mailto:gassaofilm@gmail.com">gassaofilm@gmail.com</a>
+</div>
+<footer>
+  <span>© 2026 賴晁翔<span class="t-en"> / Lai Chao-Hsiang</span></span>
+  <div class="links">
+    <!-- TODO: 換真連結 -->
+    <a href="#">Instagram</a><a href="#">GitHub</a><a href="#">Threads</a>
+  </div>
+</footer>
+
+<div id="lb" role="dialog" aria-label="放大檢視">
+  <span class="x">✕</span><div class="body"></div><p class="cap"></p>
+</div>
+
+<script>
+  // 中英切換
+  const htmlEl=document.documentElement, tog=document.getElementById('langToggle');
+  const zhB=tog.querySelector('.zh-btn'), enB=tog.querySelector('.en-btn');
+  function setLang(l){const en=l==='en';htmlEl.classList.toggle('en',en);
+    htmlEl.lang=en?'en':'zh-Hant';zhB.classList.toggle('on',!en);enB.classList.toggle('on',en)}
+  zhB.onclick=()=>setLang('zh'); enB.onclick=()=>setLang('en'); setLang('zh');
+
+  const io=new IntersectionObserver((es)=>{es.forEach(e=>{if(e.isIntersecting){e.target.classList.add('in');io.unobserve(e.target)}})},{threshold:.1});
+  document.querySelectorAll('.reveal').forEach(el=>io.observe(el));
+  const lb=document.getElementById('lb'),body=lb.querySelector('.body'),cap=lb.querySelector('.cap');
+  document.querySelectorAll('.gallery figure').forEach(fig=>{
+    fig.addEventListener('click',()=>{
+      const img=fig.querySelector('img');
+      body.innerHTML=img?'<img src="'+img.src+'" alt="">':'<div class="ph" style="width:55vw;aspect-ratio:3/4"></div>';
+      cap.textContent=fig.querySelector('figcaption')?.textContent||''; lb.classList.add('open');
+    });
+  });
+  const close=()=>lb.classList.remove('open');
+  lb.addEventListener('click',close);
+  addEventListener('keydown',e=>{if(e.key==='Escape')close()});
+</script>

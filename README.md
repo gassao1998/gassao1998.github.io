@@ -2,13 +2,24 @@
 
 賴晁翔的作品集網站（"酷酷的" 個人 portfolio）。
 
-- 狀態：**剛開 repo，尚未選技術棧、尚未動工。**
+- 狀態：**第一版骨架完成**（`index.html`），內容待換真作品。
 - 定位：獨立 repo（本工作區慣例，母資料夾下各自 `git init`）。
 
-## 待決定
-- 技術棧（靜態 HTML/CSS？Astro？Next.js？）— 未定，動工前拍板。
-- 視覺風格 / 色票 / 字體 — 未定。
-- 內容：要放哪些作品（攝影？藝術？論文？軟體專案？）。
+## 技術棧（2026-07-21 拍板）
+單一靜態 `index.html`，零建置、零框架、零外部依賴（字型走 Google Fonts）。
+本機預覽＝直接用瀏覽器開檔；上線＝丟 GitHub Pages。
+
+## 怎麼放我的作品（換佔位內容）
+`index.html` 三個區塊都標了 `TODO` 註解：
+- **文字作品** → `#writing` 區，一篇一個 `<article>`（標題／媒體／年份／連結）。
+- **攝影作品** → `#photography` 區，把 `.ph-tile` 佔位換成 `<img src="images/xxx.jpg">`；
+  照片放 `images/`（尚未建，放圖時再開）。`--ar` 控長寬比讓瀑布流錯落。點圖有燈箱。
+- **程式成果** → `#code` 區，一個專案一張 `.proj`（連到 repo 或 demo）。
+- 聯絡 email／社群連結在 `#contact`。
+
+## 視覺
+creative-agency 風（參考 owner 給的 ui-ux-pro-max `/creative-agency` demo）：近黑 `#0b0b0c`
+＋螢光綠 accent `#c6ff3c`，Fraunces 襯線 × Space Grotesk 無襯線，超大排版、marquee、捲動揭示。
 
 ## 候選工具評估（2026-07-21）
 使用者丟來 7 個連結，評估能不能用來做這個站。分三類：
