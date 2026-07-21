@@ -33,3 +33,4 @@
 - 手機版 hero 標題會蓋到右上角中英切換鈕：≤680px 時 header 加 `padding-top:4.5rem` 把標題壓到鈕下方。
 - 「我能做什麼」三張能力卡拿掉 `01/02/03` 編號（owner：卡片別搞成三行、兩行就好）→ 每卡剩標題＋敘述兩行；順手移除 `.cap .no` 樣式、h3 top margin 歸零。
 - 程式成果的技術標籤 pill 加回外框（`.tags span` 補 `border:1px solid var(--line)`）——原本只靠填色、在米色 alt 區塊上像沒框（owner 回報）。
+- **公開上線**：推上 GitHub `gassao1998/gassao1998.github.io`（公開 repo），GitHub Pages 從 master 根目錄建置、HTTPS，網址 **https://gassao1998.github.io/**。用帳號名當 user-site＝根網域最乾淨。之後 push 即自動重建更新。內容仍多為 TODO 佔位。
