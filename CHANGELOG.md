@@ -31,3 +31,4 @@
 - **修 RWD**：補上漏掉的 `<meta name="viewport">`（＋`charset=utf-8`）。少了它手機會用 ~980px 假視窗把整頁縮小
   → owner 手機看字太小的根因。桌面本來就正常，故非字級問題而是缺 viewport meta。
 - 手機版 hero 標題會蓋到右上角中英切換鈕：≤680px 時 header 加 `padding-top:4.5rem` 把標題壓到鈕下方。
+- 「我能做什麼」三張能力卡拿掉 `01/02/03` 編號（owner：卡片別搞成三行、兩行就好）→ 每卡剩標題＋敘述兩行；順手移除 `.cap .no` 樣式、h3 top margin 歸零。
