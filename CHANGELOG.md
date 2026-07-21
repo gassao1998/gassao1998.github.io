@@ -10,3 +10,7 @@
   其餘 6 個候選（uupm.cc、theme-factory、impeccable、AccessLint、Owl-Listener、excalidraw）記在 README，之後要用再裝。
 - 改成**全域安裝**：8 支移到 `~/.claude/skills/`（任何目錄可用），移除專案層 `.claude/` 那份避免重複。
   代價：不隨此 repo clone 走、不會自動更新（要追版改用 plugin marketplace，指令見 README）。
+- 再改成 **plugin 全域安裝**：手動接好 marketplace（`designer-skills`）＋ plugin
+  （`designer-skills@designer-skills`，pin 1.0.0）進 `~/.claude/plugins/`，登進 installed_plugins.json；
+  移除手動 `~/.claude/skills/` 那 8 份副本。動 plugin 設定前備份了 known_marketplaces/installed_plugins。
+  **需重開 `claude` 才會以 plugin 形態載入。** 好處：被 plugin 系統追蹤、可 `/plugin` 更新。

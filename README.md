@@ -42,15 +42,18 @@
   **→ 站體本身用不到；只有作品案例要畫架構/流程圖時才用。情境性，先跳過。**
 
 ## 已安裝的主力 skill（2026-07-21）
-`julianoczkowski/designer-skills`（Apache-2.0）8 支，**全域安裝**於 `~/.claude/skills/`（任何目錄都可用）：
+`julianoczkowski/designer-skills`（Apache-2.0）8 支，**以 plugin 全域安裝**（marketplace＝`designer-skills`、
+plugin＝`designer-skills@designer-skills`，被記進 `~/.claude/plugins/installed_plugins.json`，跟 ponytail/discord 同級）：
 `grill-me`、`design-brief`、`information-architecture`、`design-tokens`、`brief-to-tasks`、
-`frontend-design`、`design-review`、`design-flow`（前 7 步的總指揮）。授權留檔於 `~/.claude/skills/LICENSE-designer-skills`。
+`frontend-design`、`design-review`、`design-flow`（前 7 步的總指揮）。
 
 **怎麼用（之後）**：任何 session 直接 `/design-flow` 跑整條流程，或單獨叫某一步
 （`/grill-me`→`/design-brief`→`/information-architecture`→`/design-tokens`→
 `/brief-to-tasks`→`/frontend-design`→`/design-review`）。
-- 全域安裝＝手動複製到 `~/.claude/skills/`，**不隨此 repo clone 走**、也不會自動更新。要追最新版可改用
-  plugin：`/plugin marketplace add julianoczkowski/designer-skills` + `/plugin install designer-skills@designer-skills`。
+- 安裝方式從「手動複製到 `~/.claude/skills/`」改成 **plugin**（被 plugin 系統追蹤、可 `/plugin` 更新）。
+  手動時代那 8 份副本已從 `~/.claude/skills/` 移除，避免重複。
+- ⚠️ plugin 在 **session 啟動時才載入**——這次改動要**重開 `claude`** 才會以 plugin 形態出現。
+- 源 repo 沒宣告版本，安裝時 pin 為 `1.0.0`；要更新版本用 `/plugin`（marketplace 已在清單）。
 
 **尚未安裝、之後想用再裝**（parked）：
 - uupm.cc（UI UX Pro Max）、theme-factory — 選風格/色票/字體用；要用時再接。
