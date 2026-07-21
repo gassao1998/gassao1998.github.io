@@ -32,3 +32,4 @@
   → owner 手機看字太小的根因。桌面本來就正常，故非字級問題而是缺 viewport meta。
 - 手機版 hero 標題會蓋到右上角中英切換鈕：≤680px 時 header 加 `padding-top:4.5rem` 把標題壓到鈕下方。
 - 「我能做什麼」三張能力卡拿掉 `01/02/03` 編號（owner：卡片別搞成三行、兩行就好）→ 每卡剩標題＋敘述兩行；順手移除 `.cap .no` 樣式、h3 top margin 歸零。
+- 程式成果的技術標籤 pill 加回外框（`.tags span` 補 `border:1px solid var(--line)`）——原本只靠填色、在米色 alt 區塊上像沒框（owner 回報）。
