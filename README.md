@@ -42,16 +42,15 @@
   **→ 站體本身用不到；只有作品案例要畫架構/流程圖時才用。情境性，先跳過。**
 
 ## 已安裝的主力 skill（2026-07-21）
-`julianoczkowski/designer-skills`（Apache-2.0）已 vendored 進 **`portfolio/.claude/skills/`**（8 支，隨 repo 走）：
+`julianoczkowski/designer-skills`（Apache-2.0）8 支，**全域安裝**於 `~/.claude/skills/`（任何目錄都可用）：
 `grill-me`、`design-brief`、`information-architecture`、`design-tokens`、`brief-to-tasks`、
-`frontend-design`、`design-review`、`design-flow`（前 7 步的總指揮）。授權留檔於 `.claude/skills/LICENSE-designer-skills`。
+`frontend-design`、`design-review`、`design-flow`（前 7 步的總指揮）。授權留檔於 `~/.claude/skills/LICENSE-designer-skills`。
 
-**怎麼用（之後）**：在 portfolio 目錄開 Claude Code session，直接 `/design-flow` 跑整條流程，
-或單獨叫某一步（`/grill-me`→`/design-brief`→`/information-architecture`→`/design-tokens`→
+**怎麼用（之後）**：任何 session 直接 `/design-flow` 跑整條流程，或單獨叫某一步
+（`/grill-me`→`/design-brief`→`/information-architecture`→`/design-tokens`→
 `/brief-to-tasks`→`/frontend-design`→`/design-review`）。
-- 因常駐 session 在母層 `C:\Research-Lab`，這些是**專案層 skill**，要在 portfolio 當 cwd 時才載入。
-  想全域隨處可用：`/plugin marketplace add julianoczkowski/designer-skills` +
-  `/plugin install designer-skills@designer-skills`（會自動追最新版）。
+- 全域安裝＝手動複製到 `~/.claude/skills/`，**不隨此 repo clone 走**、也不會自動更新。要追最新版可改用
+  plugin：`/plugin marketplace add julianoczkowski/designer-skills` + `/plugin install designer-skills@designer-skills`。
 
 **尚未安裝、之後想用再裝**（parked）：
 - uupm.cc（UI UX Pro Max）、theme-factory — 選風格/色票/字體用；要用時再接。
