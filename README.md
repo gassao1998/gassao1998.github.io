@@ -41,8 +41,26 @@
 - **coleam00/excalidraw-diagram-skill** — 生 Excalidraw 手繪風示意圖。
   **→ 站體本身用不到；只有作品案例要畫架構/流程圖時才用。情境性，先跳過。**
 
+## 已安裝的主力 skill（2026-07-21）
+`julianoczkowski/designer-skills`（Apache-2.0）已 vendored 進 **`portfolio/.claude/skills/`**（8 支，隨 repo 走）：
+`grill-me`、`design-brief`、`information-architecture`、`design-tokens`、`brief-to-tasks`、
+`frontend-design`、`design-review`、`design-flow`（前 7 步的總指揮）。授權留檔於 `.claude/skills/LICENSE-designer-skills`。
+
+**怎麼用（之後）**：在 portfolio 目錄開 Claude Code session，直接 `/design-flow` 跑整條流程，
+或單獨叫某一步（`/grill-me`→`/design-brief`→`/information-architecture`→`/design-tokens`→
+`/brief-to-tasks`→`/frontend-design`→`/design-review`）。
+- 因常駐 session 在母層 `C:\Research-Lab`，這些是**專案層 skill**，要在 portfolio 當 cwd 時才載入。
+  想全域隨處可用：`/plugin marketplace add julianoczkowski/designer-skills` +
+  `/plugin install designer-skills@designer-skills`（會自動追最新版）。
+
+**尚未安裝、之後想用再裝**（parked）：
+- uupm.cc（UI UX Pro Max）、theme-factory — 選風格/色票/字體用；要用時再接。
+- impeccable.style — 反 AI-slop 打磨（先確認授權/價格）。
+- AccessLint/skills — 出貨前無障礙檢查。
+- Owl-Listener/designer-skills、excalidraw-skill — 先跳過（見上）。
+
 ## 建議走法（懶人路徑）
-1. 骨幹：julianoczkowski 的 7 支流程 skill。
+1. 骨幹：`/design-flow`（已裝）。
 2. 定調：uupm.cc + theme-factory 挑風格/色票/字體（想更講究再看 impeccable）。
 3. 出貨前：AccessLint 跑無障礙。
-4. 先不裝任何 skill、先不選棧——等 owner 拍板。
+4. 技術棧未選——動工前跟 owner 拍板。
