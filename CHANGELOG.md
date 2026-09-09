@@ -1,5 +1,19 @@
 # Changelog
 
+## 2026-09-09
+- **佔位內容清空，換上真作品**（owner：「專案導覽頁面整理一下，有些用不到了，新寫的論文放上來」）。
+- `#writing`：三筆假文案 → **兩筆論文條目**（碩論題目、研究問題章）。⚠️ `thesis` 與 `thesis-wiki`
+  兩個 repo 都是 **private**，所以條目**不放連結**（不用 `href="#"` 空殼）。
+- `#code`：三張假卡 → **三個真專案**——東京防災互動地圖（唯一有公開連結：
+  https://tnf-einfo.github.io/einfo-widgets/ ，已驗證 repo 為 PUBLIC 且 Pages 有效）、
+  颱風路徑短影音自動產製、論文文獻庫工具鏈（後兩者私有、不放連結）。
+- `#photography`：六張「照片」佔位磚拿掉（`images/` 根本還沒建），改成一行「照片整理中」；
+  gallery 的 CSS/JS 全部保留，原地留註解說明怎麼換回來。
+- footer：Instagram／Threads 兩個空殼連結刪掉（不知道真網址），GitHub 換成真的
+  https://github.com/gassao1998 。
+- 新內容一律**中英成對**（`t-zh`/`t-en`），避免切 EN 時露出中文；檔頭註解同步改寫。
+- 自驗：`TODO` 殘留 0、標籤無未閉合／多餘結束、`href="#"` 只剩註解裡的說明文字。
+
 ## 2026-07-21
 - 開 repo（`git init`），建 README + CHANGELOG。
 - 評估 owner 丟來的 7 個設計工具/資源連結（見 README「候選工具評估」），分主力/打磨/QA/可跳過四類。
