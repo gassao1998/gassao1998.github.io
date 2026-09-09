@@ -1,12 +1,10 @@
 <!--
   賴晁翔 · portfolio — v3「明亮 creative-agency」(2026-07-21)
   單一靜態檔、零建置、GitHub Pages 直接上。單一亮色世界。
-  2026-09-09：佔位內容清掉，換上真作品（owner 指示「有些用不到了，新寫的論文放上來」）。
-  怎麼加：
-    · 文字 → #writing 的 <li>（論文兩個 repo 都是 private，故不放 href）
-    · 程式 → #code 的 .proj 卡（私有專案不放 href，只有公開的才連）
-    · 攝影 → #photography 現為一行「整理中」，放圖時照該處註解換回 gallery
-  雙語：新內容都要成對寫 <span class="t-zh"> 與 <span class="t-en">，否則切 EN 會露出中文。
+  換真作品（都標 TODO）：
+    · 文字 → #writing 的 <li>
+    · 攝影 → #photography 把 .ph 換成 <img src="images/xxx.jpg">
+    · 程式 → #code 的 .proj 卡
 -->
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
@@ -203,9 +201,10 @@
     <span class="lab"><span class="t-zh">Writing</span><span class="t-en">文字</span></span>
   </div>
   <ul class="wlist reveal">
-    <!-- 一篇一個 <li>；有公開連結才填 href，沒有就不要放 href="#"。 -->
-    <li><a><h3><span class="t-zh">環境資訊中心作為倡議型網媒，如何框架台灣本土環境議題</span><span class="t-en">Framing Taiwan's Environmental Disputes: An Advocacy Outlet Against the Mainstream</span></h3><p class="m"><span class="t-zh">國立臺灣大學新聞研究所 · 碩士論文（進行中）</span><span class="t-en">MA thesis in progress · Graduate Institute of Journalism, NTU</span></p><span class="y">2026</span></a></li>
-    <li><a><h3><span class="t-zh">誰被容許界定問題？——環境爭議報導裡的定義位置</span><span class="t-en">Who Gets to Define the Problem?</span></h3><p class="m"><span class="t-zh">論文研究問題章 · 質性內容分析與詮釋</span><span class="t-en">Research questions chapter · qualitative content analysis</span></p><span class="y">2026</span></a></li>
+    <!-- TODO: 一篇一個 <li>，有連結就填 href。 -->
+    <li><a href="#"><h3>報導標題或文章名稱</h3><p class="m">刊登媒體 / 專題 · 深度報導</p><span class="y">2025</span></a></li>
+    <li><a href="#"><h3>另一篇作品</h3><p class="m">刊登媒體 · 特稿</p><span class="y">2024</span></a></li>
+    <li><a href="#"><h3>散文 / 評論 / 專欄名</h3><p class="m">發表平台 · 專欄</p><span class="y">2024</span></a></li>
   </ul>
 </section>
 
@@ -216,10 +215,10 @@
     <span class="lab"><span class="t-zh">Code</span><span class="t-en">程式</span></span>
   </div>
   <div class="projects">
-    <!-- 一個專案一張；href 指 repo 或 demo，私有專案就不要放 href。 -->
-    <a class="proj reveal" href="https://tnf-einfo.github.io/einfo-widgets/" target="_blank" rel="noopener"><h3><span class="t-zh">東京防災互動地圖 </span><span class="t-en">Tokyo Disaster-Preparedness Map </span><span class="a">↗</span></h3><p><span class="t-zh">為環境資訊中心的報導做的可嵌入互動地圖，讀者能在文章裡直接查點位。已在 GitHub Pages 上線。</span><span class="t-en">An embeddable interactive map built for an Environmental Information Center story. Live on GitHub Pages.</span></p><div class="tags"><span>JavaScript</span><span class="t-zh">互動地圖</span><span class="t-en">Maps</span><span class="t-zh">資料新聞</span><span class="t-en">Data journalism</span></div></a>
-    <a class="proj reveal"><h3><span class="t-zh">颱風路徑短影音自動產製</span><span class="t-en">Typhoon Track Video Pipeline</span></h3><p><span class="t-zh">抓中央氣象署即時資料或 IBTrACS 歷史軌跡，一行指令產出直式短影音與 A4 查核報告 PDF；再包成 MCP 工具，讓同事自己出片。</span><span class="t-en">Pulls live CWA data or IBTrACS history and renders a vertical short plus an A4 fact-check PDF in one command; packaged as an MCP tool so colleagues can run it themselves.</span></p><div class="tags"><span>Python</span><span class="t-zh">資料視覺化</span><span class="t-en">Dataviz</span><span class="t-zh">自動化</span><span class="t-en">Automation</span></div></a>
-    <a class="proj reveal"><h3><span class="t-zh">論文文獻庫工具鏈</span><span class="t-en">Research Library Toolchain</span></h3><p><span class="t-zh">自建的文獻管理：DOI 驗證擋假引用、精讀後升級卡片、BibTeX 自動匯出到 LaTeX、單篇雙欄批注閱讀器。</span><span class="t-en">A home-built literature system: DOI verification against fake citations, deep-read card upgrades, BibTeX export into LaTeX, and a two-column annotation reader.</span></p><div class="tags"><span>Python</span><span class="t-zh">研究工具</span><span class="t-en">Research tools</span><span>LaTeX</span></div></a>
+    <!-- TODO: 一個專案一張，href 指 repo 或 demo。 -->
+    <a class="proj reveal" href="#"><h3>專案名稱 <span class="a">↗</span></h3><p>做什麼、解決什麼、你負責哪塊；成果數字放這。</p><div class="tags"><span>Python</span><span>資料分析</span><span>視覺化</span></div></a>
+    <a class="proj reveal" href="#"><h3>另一個專案 <span class="a">↗</span></h3><p>簡短描述，技術亮點。</p><div class="tags"><span>JavaScript</span><span>網頁</span></div></a>
+    <a class="proj reveal" href="#"><h3>工具 / 腳本 <span class="a">↗</span></h3><p>自動化了什麼、省了多少事。</p><div class="tags"><span>自動化</span><span>CLI</span></div></a>
   </div>
 </section>
 
@@ -229,17 +228,15 @@
     <h2><span class="t-zh">攝影作品</span><span class="t-en">Photography</span></h2>
     <span class="lab"><span class="t-zh">Photography</span><span class="t-en">攝影</span></span>
   </div>
-  <p class="reveal" style="max-width:52ch;color:var(--muted)">
-    <span class="t-zh">照片整理中，近期補上。</span><span class="t-en">Selection in progress — coming soon.</span>
-  </p>
-  <!--
-    放圖時把上面那段 <p> 換回 gallery（燈箱與瀑布流的 CSS/JS 都還在，不必改）：
-    <div class="gallery reveal">
-      <figure><img src="images/xxx.jpg" alt="..."><figcaption>說明 · 2025</figcaption></figure>
-      …一張一個 <figure>；--ar 控長寬比讓瀑布流錯落，例：<figure style="--ar:3/4">
-    </div>
-    照片放 portfolio/images/（尚未建）。
-  -->
+  <div class="gallery reveal">
+    <!-- TODO: 換真圖 → <figure><img src="images/xxx.jpg" alt="..."><figcaption>說明</figcaption></figure> -->
+    <figure><div class="ph" style="--ar:3/4">照片</div><figcaption>作品說明 · 2025</figcaption></figure>
+    <figure><div class="ph" style="--ar:1/1">照片</div><figcaption>作品說明 · 2025</figcaption></figure>
+    <figure><div class="ph" style="--ar:4/5">照片</div><figcaption>作品說明 · 2024</figcaption></figure>
+    <figure><div class="ph" style="--ar:3/2">照片</div><figcaption>作品說明 · 2024</figcaption></figure>
+    <figure><div class="ph" style="--ar:4/5">照片</div><figcaption>作品說明 · 2024</figcaption></figure>
+    <figure><div class="ph" style="--ar:1/1">照片</div><figcaption>作品說明 · 2023</figcaption></figure>
+  </div>
 </section>
 
 <!-- CTA -->
@@ -250,8 +247,8 @@
 <footer>
   <span>© 2026 賴晁翔<span class="t-en"> / Lai Chao-Hsiang</span></span>
   <div class="links">
-    <!-- 只放真的連結；沒有的就別留空殼。 -->
-    <a href="https://github.com/gassao1998" target="_blank" rel="noopener">GitHub</a>
+    <!-- TODO: 換真連結 -->
+    <a href="#">Instagram</a><a href="#">GitHub</a><a href="#">Threads</a>
   </div>
 </footer>
 
