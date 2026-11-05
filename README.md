@@ -18,11 +18,11 @@
 - 聯絡 email／社群連結在 `#contact`。
 
 ## 視覺
-creative-agency 風（參考 owner 給的 ui-ux-pro-max `/creative-agency` demo）：近黑 `#0b0b0c`
+creative-agency 風（參考 ui-ux-pro-max `/creative-agency` demo）：近黑 `#0b0b0c`
 ＋螢光綠 accent `#c6ff3c`，Fraunces 襯線 × Space Grotesk 無襯線，超大排版、marquee、捲動揭示。
 
 ## 候選工具評估（2026-07-21）
-使用者丟來 7 個連結，評估能不能用來做這個站。分三類：
+評估 7 個連結能不能用來做這個站。分三類：
 
 ### A. 建站流程 / 主力（建議採用）
 - **julianoczkowski/designer-skills**（Medium 那篇的 7 支 Claude Code skill）—
@@ -76,4 +76,4 @@ plugin＝`designer-skills@designer-skills`，被記進 `~/.claude/plugins/instal
 1. 骨幹：`/design-flow`（已裝）。
 2. 定調：uupm.cc + theme-factory 挑風格/色票/字體（想更講究再看 impeccable）。
 3. 出貨前：AccessLint 跑無障礙。
-4. 技術棧未選——動工前跟 owner 拍板。
+4. 技術棧未選，動工前先拍板。

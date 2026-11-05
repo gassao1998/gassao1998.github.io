@@ -2,6 +2,7 @@
 
 ## 2026-11-05
 - commit 訊息改寫：舊 commit 拿掉誰要求、誰決定的寫法，已推上 GitHub 的只改標題，檔案內容不動。新舊編號對照在 `docs/commit-map-2026-11-04.tsv`，舊歷史在 tag `archive/pre-rewrite-2026-11-04/<分支>`。
+- HANDOFF 與 README 的同樣寫法拿掉，待辦改寫成要做的動作。
 
 ## 2026-07-21
 - 開 repo（`git init`），建 README + CHANGELOG。
