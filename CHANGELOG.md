@@ -1,5 +1,8 @@
 # Changelog
 
+## 2026-11-07（第三版）
+- `ascii-cave/` 換成第三版（原始碼 repo `2480c58`）：手改用 CC0 的 WRAD ARMS 手臂模型、字元格再細一倍、鐵軌做舊、塗鴉 35 張、投影的貓與控制室壁畫、每 156 公尺出洞走一段 ROT-54 的走道。`assets/` 整個換新，多了 `models/arms.glb`，舊的 `cat.jpg` 刪掉。
+
 ## 2026-11-07
 - 新增 `ascii-cave/`：ASCII 字元畫的鐵道隧道互動作品，網址 https://gassao1998.github.io/ascii-cave/ ，還沒連進首頁。原始碼在私人 repo `gassao1998/ascii-cave`（`d0404eb`），這裡只放網頁要用的 `index.html`、`preview.jpg` 與 11 張塗鴉貼圖。
 

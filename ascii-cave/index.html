@@ -61,7 +61,7 @@ import { RenderPass } from 'three/addons/postprocessing/RenderPass.js';
 import { ShaderPass } from 'three/addons/postprocessing/ShaderPass.js';
 import { SimplexNoise } from 'three/addons/math/SimplexNoise.js';
 import { mergeGeometries } from 'three/addons/utils/BufferGeometryUtils.js';
-import { RoundedBoxGeometry } from 'three/addons/geometries/RoundedBoxGeometry.js';
+import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
 
 const canvas = document.getElementById('view');
 const msg = document.getElementById('msg');
@@ -82,10 +82,16 @@ async function start() {
   const NS = 72, DS = S / NS;                          // samples around the arch
   const DZ = 0.25, SEG_L = 12, NZ = SEG_L / DZ, SEGS = 6; // segment layout: 6 x 12 m of wall ahead
   const EYE = 1.6, SPEED = 1.15;                       // eye height, walk speed (m/s)
-  // scene texels per cell side: 3 keeps a 390x844 phone above 24 fps with 3 px cells (README has the numbers)
-  const K = [2, 3, 4].includes(Number(params.get('k'))) ? Number(params.get('k')) : 3;
+  // scene texels per cell side; by default 1 for the 3-4 px cells, which are nearly pixels already (README has the numbers)
+  const K_FORCED = [1, 2, 3, 4].includes(Number(params.get('k'))) ? Number(params.get('k')) : 0;
   const CHARS = ' .:-=+*#%@';
-  const GRAFFITI = ['cat', 'lilac', 'blue', 'bfd', 'code', 'yellow-e', 'love', 'fists', 'green', 'pillar', 'scam'];
+  // assets/graffiti/*.jpg, cropped by tools/crop_graffiti.py; the first three are placed specially
+  const GRAFFITI = ['cat-arch', 'mural-sun', 'mural-dish', 'lilac', 'blue', 'bfd', 'code', 'yellow-e', 'love', 'fists',
+    'green', 'pillar', 'scam', 'mos-erevan', 'suka', 'gey', 'throw-green', 'green-saints', 'shutter',
+    'tugan', 'underpass-l', 'underpass-cat', 'underpass-teal', 'underpass-lilac', 'make-love', 'protect-trans', 'portal-red',
+    'portal-tags', 'orange', 'tasma', 'fuck-you', 'column', 'card', 'kiss', 'eyes'];
+  const START = Math.max(0, Number(params.get('at')) || 0); // ?at=metres starts further in; ?pause=1 stands still
+  const PAUSE = params.get('pause') === '1';
   const BOB = params.get('bob') === '1';
   const reducedMotion = matchMedia('(prefers-reduced-motion: reduce)');
   const DEG = Math.PI / 180;
@@ -96,7 +102,7 @@ async function start() {
 
   const scene = new THREE.Scene();
   scene.fog = new THREE.Fog(0x000000, 6, 40);
-  const camera = new THREE.PerspectiveCamera(60, 1, 0.05, 90);
+  const camera = new THREE.PerspectiveCamera(60, 1, 0.05, 1500); // far enough for the sky outside
   camera.position.set(0, EYE, 0);
 
   const handScene = new THREE.Scene();
@@ -145,6 +151,13 @@ async function start() {
   const composer = new EffectComposer(renderer);
   composer.setPixelRatio(1); // its targets are sized in scene texels (K per character cell), not screen pixels
   composer.addPass(new RenderPass(scene, camera));
+  // the ROT-54 walkway outside: its own scene (moonlight must not reach into the tunnel), drawn over the same
+  // depth buffer so tunnel walls and the outdoors hide each other correctly; only on while a walkway is near
+  const outScene = new THREE.Scene();
+  const outPass = new RenderPass(outScene, camera);
+  outPass.clear = false;
+  outPass.enabled = false;
+  composer.addPass(outPass);
   const handPass = new RenderPass(handScene, handCamera);
   handPass.clear = false;
   handPass.clearDepth = true; // the hand is never hidden by the tunnel
@@ -211,10 +224,22 @@ async function start() {
     e.x = ax; e.y = ay; ax += e.img.width + PAD; rowH = Math.max(rowH, e.img.height);
   }
   const AH = Math.max(1, ay + rowH);
+  const fit = Math.min(1, 4096 / AH);  // phones cap textures at 4096 px; shrinking the whole atlas keeps every uv
   const atlasCanvas = document.createElement('canvas');
-  atlasCanvas.width = AW; atlasCanvas.height = AH;
-  const actx = atlasCanvas.getContext('2d');
+  atlasCanvas.width = Math.round(AW * fit); atlasCanvas.height = Math.round(AH * fit);
+  const actx = atlasCanvas.getContext('2d', { willReadFrequently: true });
+  actx.scale(fit, fit);
   for (const e of images) actx.drawImage(e.img, e.x, e.y);
+  const catImg = images.find((e) => e.name === 'cat-arch');
+  if (catImg) { // white strokes on black -> strokes on transparent, so only the lines land on the wall
+    const [x, y, w, h] = [catImg.x, catImg.y, catImg.img.width, catImg.img.height].map((v) => Math.round(v * fit));
+    const d = actx.getImageData(x, y, w, h);
+    for (let k = 0; k < d.data.length; k += 4) {
+      const lum = 0.2126 * d.data[k] + 0.7152 * d.data[k + 1] + 0.0722 * d.data[k + 2];
+      d.data[k + 3] = Math.max(0, Math.min(255, (lum - 40) * 2.5));
+    }
+    actx.putImageData(d, x, y);
+  }
   const atlas = new THREE.CanvasTexture(atlasCanvas);
   atlas.colorSpace = THREE.SRGBColorSpace;
   atlas.anisotropy = 4;
@@ -222,8 +247,8 @@ async function start() {
     name: e.name, aspect: e.img.width / e.img.height,
     u0: (e.x + 1) / AW, du: (e.img.width - 2) / AW, v0: 1 - (e.y + e.img.height - 1) / AH, dv: (e.img.height - 2) / AH,
   }));
-  const cat = pieces.find((p) => p.name === 'cat');
-  const others = pieces.filter((p) => p !== cat);
+  const special = Object.fromEntries(['cat-arch', 'mural-sun', 'mural-dish'].map((n) => [n, pieces.find((p) => p.name === n)]));
+  const others = pieces.filter((p) => !Object.values(special).includes(p));
   const decalMat = new THREE.MeshStandardMaterial({
     map: atlas, vertexColors: true, transparent: true, depthWrite: false, roughness: 0.85,
     polygonOffset: true, polygonOffsetFactor: -2, polygonOffsetUnits: -2,
@@ -231,7 +256,15 @@ async function start() {
 
   // ---------- segments (rebuilt in place when they fall behind, nothing allocated afterwards) ----------
   const DECAL_VERTS = 6000, DECAL_INDEX = 36000;
-  let serial = 0, bag = [];
+  // cat picture edges, see addProjection; lowered 0.06 from the filmed framing so the ears fit a landscape view
+  const TAN = { x0: -0.364, x1: 0.2965, y0: -0.39, y1: 0.418 };
+  const Z_FIRST = 4 - SEG_L * (1 + Math.floor(START / SEG_L)); // far end of the first segment ahead
+  const slot = (seg) => Math.round((4 - SEG_L - seg.z0) / SEG_L); // world-fixed segment number
+  // 156 m of tunnel, then 84 m outside on the ROT-54 walkway, and again; walkway slots build no tunnel
+  const TUNNEL_SLOTS = 13, WALK_SLOTS = 7, CYCLE = TUNNEL_SLOTS + WALK_SLOTS;
+  const isWalk = (n) => n % CYCLE >= TUNNEL_SLOTS;
+  const zoneExit = (k) => 4 - SEG_L * (TUNNEL_SLOTS + CYCLE * k); // z where the k-th walkway leaves the tunnel
+  let bag = [];
   const rand = (a, b) => a + Math.random() * (b - a);
   const nextPiece = () => { if (!bag.length) bag = others.slice().sort(() => Math.random() - 0.5); return bag.pop(); };
 
@@ -247,7 +280,7 @@ async function start() {
     }
     decal.setIndex(new THREE.BufferAttribute(new Uint16Array(DECAL_INDEX), 1).setUsage(THREE.DynamicDrawUsage));
     const seg = {
-      z0: 4 - (k + 1) * SEG_L, P: new Float32Array(GW * GH * 3), N: new Float32Array(GW * GH * 3),
+      z0: Z_FIRST - k * SEG_L, P: new Float32Array(GW * GH * 3), N: new Float32Array(GW * GH * 3),
       wall: new THREE.Mesh(wall, wallMat), decal: new THREE.Mesh(decal, decalMat), nv: 0, ni: 0,
     };
     seg.wall.frustumCulled = seg.decal.frustumCulled = false; // rebuilt in place, bounds would go stale
@@ -257,6 +290,10 @@ async function start() {
   });
 
   function buildSegment(seg) {
+    seg.walk = isWalk(slot(seg));
+    seg.wall.visible = seg.decal.visible = !seg.walk;
+    if (seg.track) placeTrack(seg);
+    if (seg.walk) return;
     const { P, N } = seg;
     for (let j = -1; j <= NZ + 1; j++) {
       const z = seg.z0 + j * DZ;
@@ -296,18 +333,23 @@ async function start() {
 
   function placeGraffiti(seg) {
     seg.nv = seg.ni = 0;
-    const id = serial++;
-    const catSide = id % 4 === 1 ? (Math.floor(id / 4) % 2 ? 1 : -1) : 0; // a big cat every 48 m, alternating walls
-    for (const side of [-1, 1]) {
-      let zTop = seg.z0 + SEG_L - rand(0.05, 0.6);
-      if (side === catSide && cat) {
-        // stretched 1.8x along the wall, like a road marking, so it reads as a cat from down the tunnel
-        const h = 3.0, w = h * cat.aspect * 1.8, zc = seg.z0 + rand(0.6, SEG_L - w - 0.6);
-        fill(seg, side, zc + w + 0.3, zTop);
-        addDecal(seg, side, 0.18, 0.18 + h, zc, zc + w, cat, 1.4);
-        zTop = zc - 0.3;
-      }
-      fill(seg, side, seg.z0 + 0.1, zTop);
+    const n = slot(seg), top = seg.z0 + SEG_L - rand(0.05, 0.6);
+    const cat = special['cat-arch'], sun = special['mural-sun'], dish = special['mural-dish'];
+    if (n % 4 === 1 && cat) { // every 48 m the cat spans both walls and the ceiling; the walls under it stay bare
+      const eye = seg.z0 + SEG_L + 0.5;
+      addProjection(seg, cat, eye, 1.5);
+      for (const side of [-1, 1]) { fill(seg, side, eye - 2.2, top); fill(seg, side, seg.z0 + 0.1, eye - 11.5); }
+    } else if (n % 6 === 3 && sun && dish) { // every 72 m the control-room mural, laid out as on its wall
+      const side = Math.floor(n / 6) % 2 ? 1 : -1, H = 1.7, L = H * sun.aspect, H2 = H * 0.86, L2 = H2 * dish.aspect;
+      const zc = seg.z0 + rand(0.8, SEG_L - L - 0.8), yd = 0.15, ys = yd + H2;
+      addDecal(seg, side, ys, ys + H, zc, zc + L, sun, 1.15);
+      const zd = side < 0 ? zc : zc + L - L2; // the dish part sits under the right-hand end of the band
+      addDecal(seg, side, yd, ys, zd, zd + L2, dish, 1.15);
+      fill(seg, side, zc + L + 0.3, top);
+      fill(seg, side, seg.z0 + 0.1, zc - 0.3);
+      fill(seg, -side, seg.z0 + 0.1, top);
+    } else {
+      for (const side of [-1, 1]) fill(seg, side, seg.z0 + 0.1, top);
     }
     const g = seg.decal.geometry;
     for (const name of ['position', 'normal', 'uv', 'color']) g.attributes[name].needsUpdate = true;
@@ -329,6 +371,34 @@ async function start() {
         addDecal(seg, side, y0 + h + 0.1, y0 + h + 0.1 + qh, qz - qw, qz, q, rand(0.95, 1.2));
       }
       z -= w + rand(0.05, 0.45);
+    }
+  }
+
+  // The cat as filmed (phone held at eye height, about 40 deg across in portrait): project the picture back
+  // from an eye point on the centre line at `eye`, so it reads whole from there and spreads over the
+  // walls and ceiling as you walk under it. TAN (defined above) = the picture's edges as projector tangents.
+  function addProjection(seg, p, eye, tint) {
+    const j0 = Math.max(0, Math.ceil((eye - 12 - seg.z0) / DZ)), j1 = Math.min(NZ, Math.floor((eye - 3 - seg.z0) / DZ));
+    const nj = j1 - j0 + 1, ni = NS + 1;
+    if (nj < 2 || seg.nv + ni * nj > DECAL_VERTS) return;
+    const g = seg.decal.geometry, pos = g.attributes.position.array, nor = g.attributes.normal.array;
+    const uv = g.attributes.uv.array, col = g.attributes.color.array, idx = g.index.array;
+    const base = seg.nv;
+    for (let j = j0; j <= j1; j++) for (let i = 0; i <= NS; i++) {
+      const k = ((j + 1) * GW + i + 1) * 3, v = seg.nv++;
+      for (let c = 0; c < 3; c++) { pos[v * 3 + c] = seg.P[k + c] + seg.N[k + c] * 0.03; nor[v * 3 + c] = seg.N[k + c]; }
+      const ahead = eye - pos[v * 3 + 2];
+      const u = (pos[v * 3] / ahead - TAN.x0) / (TAN.x1 - TAN.x0), w = ((pos[v * 3 + 1] - EYE) / ahead - TAN.y0) / (TAN.y1 - TAN.y0);
+      uv[v * 2] = p.u0 + THREE.MathUtils.clamp(u, 0, 1) * p.du; uv[v * 2 + 1] = p.v0 + THREE.MathUtils.clamp(w, 0, 1) * p.dv;
+      col[v * 4] = col[v * 4 + 1] = col[v * 4 + 2] = tint;
+      col[v * 4 + 3] = u >= 0 && u <= 1 && w >= 0 && w <= 1 ? 1 : 0;
+    }
+    for (let j = 0; j < nj - 1; j++) for (let i = 0; i < ni - 1; i++) {
+      const a = base + j * ni + i, c = a + ni, m = seg.ni;
+      if (col[a * 4 + 3] + col[(a + 1) * 4 + 3] + col[c * 4 + 3] + col[(c + 1) * 4 + 3] === 0) continue; // outside
+      if (m + 6 > DECAL_INDEX) return;
+      idx[m] = a; idx[m + 1] = a + 1; idx[m + 2] = c; idx[m + 3] = a + 1; idx[m + 4] = c + 1; idx[m + 5] = c;
+      seg.ni += 6;
     }
   }
 
@@ -358,62 +428,356 @@ async function start() {
     }
   }
 
-  // ---------- track: one merged mesh (floor, rails, sleepers) that hops forward by its 12 m period ----------
-  const TRACK_P = 12;
-  const track = (() => {
-    const zNear = 2.4, len = SEGS * SEG_L + TRACK_P + zNear, parts = [];
-    const tint = (g, r, gg, b, jitter = 0) => {
-      const n = g.attributes.position.count, c = new Float32Array(n * 3), p = g.attributes.position.array;
-      for (let i = 0; i < n; i++) {
-        const zz = ((p[i * 3 + 2] % TRACK_P) + TRACK_P) % TRACK_P; // periodic so the hop is invisible
-        const h = jitter ? 1 - jitter + jitter * 2 * (Math.sin(Math.round(p[i * 3] / 0.4) * 12.9898 + Math.round(zz / 0.4) * 78.233) * 43758.5453 % 1 + 1) / 2 : 1;
-        c.set([r * h, gg * h, b * h], i * 3);
-      }
+  // ---------- track: one 12 m piece (floor, rails, sleepers) shared by every tunnel segment ----------
+  // Abandoned: rusty rails with patchy polish on top; uneven, skewed, broken and missing sleepers; gravel and dirt
+  // drifted over them. Everything random is a function of z modulo the period, so the pieces join seamlessly.
+  const TRACK_P = 12, TAU = Math.PI * 2;
+  const wrapZ = (z) => ((z % TRACK_P) + TRACK_P) % TRACK_P;
+  const pnoise = (x, z, f) => { // simplex noise that repeats every TRACK_P along z
+    const r = TRACK_P * f / TAU, a = z * TAU / TRACK_P;
+    return simplex.noise3d(x * f, Math.cos(a) * r, Math.sin(a) * r);
+  };
+  const hash = (n) => { const s = Math.sin(n * 127.1 + 311.7) * 43758.5453; return s - Math.floor(s); };
+  const RUST = [0.3, 0.12, 0.055], POLISH = [0.74, 0.72, 0.68];
+  const trackMesh = (() => {
+    const zNear = TRACK_P, len = TRACK_P, parts = []; // local z 0..12, placed at each segment's z0
+    const paint = (g, colour) => { // colour(x, y, z) -> [r, g, b]
+      const p = g.attributes.position.array, c = new Float32Array(p.length);
+      for (let i = 0; i < p.length; i += 3) c.set(colour(p[i], p[i + 1], p[i + 2]), i);
       g.setAttribute('color', new THREE.BufferAttribute(c, 3));
       parts.push(g);
     };
-    const floor = new THREE.PlaneGeometry(2 * R + 0.8, len, 12, Math.round(len / 0.4));
+    // floor: gravel speckle, dirt drifts in patches and piled against the walls, high enough to bury some sleepers
+    const floor = new THREE.PlaneGeometry(2 * R + 0.8, len, 28, Math.round(len / 0.2));
     floor.rotateX(-Math.PI / 2).translate(0, 0, zNear - len / 2);
-    tint(floor, 0.2, 0.19, 0.17, 0.35);
-    for (let z = zNear - 0.3; z > zNear - len; z -= 0.6) tint(new THREE.BoxGeometry(2.1, 0.08, 0.22).translate(0, 0.03, z), 0.17, 0.12, 0.08);
-    for (const x of [-0.6, 0.6]) {
-      tint(new THREE.BoxGeometry(0.07, 0.11, len).translate(x, 0.125, zNear - len / 2), 0.12, 0.11, 0.1);
-      tint(new THREE.BoxGeometry(0.075, 0.02, len).translate(x, 0.19, zNear - len / 2), 0.7, 0.68, 0.64); // worn, shiny top
+    const fp = floor.attributes.position.array;
+    for (let i = 0; i < fp.length; i += 3) {
+      const x = fp[i], z = fp[i + 2];
+      fp[i + 1] = Math.max(0, pnoise(x, z, 0.5) * 0.1 - 0.015) + Math.max(0, Math.abs(x) - 1.6) * 0.09
+        + hash(Math.round(x * 12) * 17.3 + Math.round(wrapZ(z) * 9)) * 0.012;
     }
-    const mesh = new THREE.Mesh(mergeGeometries(parts), new THREE.MeshStandardMaterial({ vertexColors: true, roughness: 0.9 }));
-    mesh.frustumCulled = false;
-    scene.add(mesh);
-    return mesh;
+    floor.computeVertexNormals();
+    paint(floor, (x, y, z) => {
+      const g = 0.1 + 0.09 * hash(Math.round(x * 12) * 3.7 + Math.round(wrapZ(z) * 9) * 1.3), d = Math.min(1, y * 9);
+      return [g + 0.05 * d, g * 0.92 + 0.02 * d, g * 0.8];  // grey gravel, browner where the dirt piles up
+    });
+    // sleepers: 20 slots per period; each slot's hash picks missing, broken, skew, shift, sink and colour
+    for (let k = 0, z0 = zNear - 0.3; z0 > zNear - len; k++, z0 -= 0.6) {
+      const s = k % 20, h = (n) => hash(s * 13.1 + n);
+      if (h(1) < 0.09) continue;                                          // missing
+      const z = z0 + (h(2) - 0.5) * 0.14, yaw = (h(3) - 0.5) * 0.22, sink = h(4) * 0.05;
+      const wood = 0.08 + 0.09 * h(5), grey = h(6);
+      const colour = () => [wood * (1.25 - 0.2 * grey), wood * (0.85 + 0.1 * grey), wood * (0.55 + 0.3 * grey)];
+      const pieces = h(7) < 0.14 ? [[-0.56, 0.98, 0.06], [0.6, 0.9, -0.09]] : [[0, 2.1, 0]]; // broken in two, one end tipped
+      for (const [cx, w, tilt] of pieces) {
+        const g = new THREE.BoxGeometry(w, 0.08, 0.22).rotateZ(tilt).rotateY(yaw).translate(cx, 0.03 - sink, z);
+        paint(g, colour);
+      }
+    }
+    // rails: rusty, uneven brown sides; the top keeps broken streaks of polish
+    for (const x of [-0.6, 0.6]) {
+      const n = Math.round(len / 0.25);
+      paint(new THREE.BoxGeometry(0.07, 0.11, len, 1, 1, n).translate(x, 0.125, zNear - len / 2), (px, py, pz) => {
+        const r = 0.6 + 0.4 * pnoise(px * 4, pz, 1.4);
+        return [RUST[0] * r * 1.1, RUST[1] * r, RUST[2] * r];
+      });
+      paint(new THREE.BoxGeometry(0.075, 0.02, len, 1, 1, n).translate(x, 0.19, zNear - len / 2), (px, py, pz) => {
+        const t = THREE.MathUtils.smoothstep(pnoise(px + 9, pz, 0.9), 0.1, 0.4);
+        return RUST.map((c, i) => c + (POLISH[i] - c) * t);
+      });
+    }
+    const geo = mergeGeometries(parts), mat = new THREE.MeshStandardMaterial({ vertexColors: true, roughness: 0.9 });
+    return () => { const m = new THREE.Mesh(geo, mat); m.frustumCulled = false; scene.add(m); return m; };
   })();
+  for (const seg of segments) { seg.track = trackMesh(); placeTrack(seg); }
+  function placeTrack(seg) { seg.track.position.z = seg.z0; seg.track.visible = !seg.walk; }
+
+  // black lid on the far end of the built tunnel, so the outdoors never shows through where the walls stop
+  const cap = new THREE.Mesh(new THREE.PlaneGeometry(16, 12).translate(0, 4, 0), new THREE.MeshBasicMaterial({ color: 0 }));
+  scene.add(cap);
+
+  // ---------- outside: the ROT-54 walkway (docs/rot54-reference.md); local z = 0 is the tunnel exit ----------
+  const WALK_L = WALK_SLOTS * SEG_L, RIM_Y = -1.6, DISH = { x: 30, z: -46, r: 27, R: 48 };
+  const DISH_CY = RIM_Y + Math.sqrt(DISH.R ** 2 - DISH.r ** 2);
+  const dishY = (r) => DISH_CY - Math.sqrt(DISH.R ** 2 - Math.min(r, DISH.r) ** 2);
+  const smooth = THREE.MathUtils.smoothstep;
+  function groundY(x, z) { // valley under the walkway, slope up on the left, a level apron round the dish, hills at both portals
+    const n1 = simplex.noise(x / 22, z / 22), n2 = simplex.noise(x / 7 + 30, z / 7);
+    let h = -8 + Math.max(0, -x - 4) * 0.32 + Math.max(0, Math.abs(x) - 90) * 0.4 + n1 * 2.2 + n2 * 0.5;
+    const r = Math.hypot(x - DISH.x, z - DISH.z);
+    h += (RIM_Y - 0.25 - h) * (1 - smooth(r, DISH.r + 5, DISH.r + 22));
+    if (r < DISH.r + 0.6) h = Math.min(h, dishY(r) - 0.5);
+    const hill = Math.max(smooth(z, -9, 0), smooth(-z, WALK_L - 9, WALK_L));
+    return h + (10.5 + n1 * 2.5 + Math.abs(x) * 0.04 - h) * hill;
+  }
+  // no ground along the bridge corridor (a dark drop under the deck) nor over the tunnel mouths, where it would cut in
+  const inCorridor = (x, z) => Math.abs(x) < 4.6 && z < 3.5 && z > -WALK_L - 3.5;
+  const outside = new THREE.Group(), Y_AXIS = new THREE.Vector3(0, 1, 0);
+  outScene.add(outside);
+  outScene.fog = new THREE.FogExp2(0x0d1426, 0.0045);
+  const canvasTex = (w, h, draw, repeat) => {
+    const c = document.createElement('canvas'); c.width = w; c.height = h;
+    draw(c.getContext('2d'), w, h);
+    const t = new THREE.CanvasTexture(c);
+    t.colorSpace = THREE.SRGBColorSpace; t.wrapS = t.wrapT = THREE.RepeatWrapping; t.repeat.set(...repeat);
+    return t;
+  };
+  const shade = (r, g, b, k) => `rgb(${Math.round(r * k)},${Math.round(g * k)},${Math.round(b * k)})`;
+  { // terrain
+    const g = new THREE.PlaneGeometry(520, 520, 104, 104).rotateX(-Math.PI / 2).translate(0, 0, -WALK_L / 2);
+    const p = g.attributes.position.array, c = new Float32Array(p.length);
+    for (let i = 0; i < p.length; i += 3) {
+      p[i + 1] = groundY(p[i], p[i + 2]);
+      const k = 0.75 + 0.5 * (simplex.noise(p[i] / 5, p[i + 2] / 5) * 0.5 + 0.5);
+      c.set([0.16 * k, 0.135 * k, 0.09 * k], i);             // dry grass and earth
+    }
+    g.setAttribute('color', new THREE.BufferAttribute(c, 3));
+    const kept = [], ix = g.index.array;
+    for (let t = 0; t < ix.length; t += 3) {
+      const cx = (p[ix[t] * 3] + p[ix[t + 1] * 3] + p[ix[t + 2] * 3]) / 3, cz = (p[ix[t] * 3 + 2] + p[ix[t + 1] * 3 + 2] + p[ix[t + 2] * 3 + 2]) / 3;
+      if (!inCorridor(cx, cz)) kept.push(ix[t], ix[t + 1], ix[t + 2]);
+    }
+    g.setIndex(kept);
+    g.computeVertexNormals();
+    outside.add(new THREE.Mesh(g, new THREE.MeshStandardMaterial({ vertexColors: true, roughness: 1 })));
+  }
+  { // the mirror: a spherical bowl of square panels, a few missing or rusty, in a white rim with a red band
+    const theta = Math.asin(DISH.r / DISH.R), cols = 120, rings = 16;
+    const tex = canvasTex(1024, 256, (g, w, h) => {
+      g.fillStyle = '#222'; g.fillRect(0, 0, w, h);
+      for (let j = 0; j < rings; j++) for (let i = 0; i < cols; i++) {
+        const q = hash(i * 7.1 + j * 131.7), x0 = (i * w) / cols, y0 = (j * h) / rings;
+        g.fillStyle = q < 0.04 ? '#141414' : q < 0.12 ? shade(150, 96, 70, 0.8 + q) : shade(206, 208, 204, 0.8 + 0.25 * hash(i + j * 97));
+        g.fillRect(x0 + 1, y0 + 1, w / cols - 2, h / rings - 2);
+      }
+    }, [1, 1]);
+    const dish = new THREE.Mesh(new THREE.SphereGeometry(DISH.R, 120, 16, 0, TAU, Math.PI - theta, theta),
+      new THREE.MeshStandardMaterial({ map: tex, side: THREE.BackSide, roughness: 0.5, metalness: 0.2 }));
+    dish.position.set(DISH.x, DISH_CY, DISH.z);
+    const concrete = new THREE.MeshStandardMaterial({ color: 0xb8b4aa, roughness: 0.9, side: THREE.DoubleSide });
+    const rim = new THREE.Mesh(new THREE.CylinderGeometry(DISH.r + 0.6, DISH.r + 0.9, 1.4, 120, 1, true), concrete);
+    rim.position.set(DISH.x, RIM_Y + 0.15, DISH.z);
+    const band = new THREE.Mesh(new THREE.CylinderGeometry(DISH.r + 0.62, DISH.r + 0.62, 0.22, 120, 1, true),
+      new THREE.MeshStandardMaterial({ color: 0x8a2a1c, roughness: 0.8, side: THREE.DoubleSide }));
+    band.position.set(DISH.x, RIM_Y + 0.8, DISH.z);
+    outside.add(dish, rim, band);
+  }
+  { // steelwork: white centre tower and feed cabin, rust arch over the bowl, two rust towers, the walkway itself
+    const white = [], rust = [], rails = [], dark = [], q = new THREE.Quaternion(), d = new THREE.Vector3();
+    const beam = (list, a, b, t) => {
+      d.subVectors(b, a);
+      const g = new THREE.BoxGeometry(t, d.length(), t).translate(0, d.length() / 2, 0);
+      list.push(g.applyQuaternion(q.setFromUnitVectors(Y_AXIS, d.normalize())).translate(a.x, a.y, a.z));
+    };
+    const V = (x, y, z) => new THREE.Vector3(x, y, z);
+    const lattice = (list, cx, cz, y0, height, w0, w1, step, t) => { // square tower: corner legs, rings, X bracing
+      const corner = (k, y) => { const w = w0 + (w1 - w0) * (y - y0) / height, a = (k + 0.5) * Math.PI / 2;
+        return V(cx + Math.cos(a) * w * 0.707, y, cz + Math.sin(a) * w * 0.707); };
+      for (let k = 0; k < 4; k++) beam(list, corner(k, y0), corner(k, y0 + height), t);
+      for (let y = y0; y < y0 + height - 0.1; y += step) for (let k = 0; k < 4; k++) {
+        const y1 = Math.min(y0 + height, y + step);
+        beam(list, corner(k, y1), corner((k + 1) % 4, y1), t * 0.7);
+        beam(list, corner(k, y), corner((k + 1) % 4, y1), t * 0.5);
+        beam(list, corner((k + 1) % 4, y), corner(k, y1), t * 0.5);
+      }
+    };
+    const base = dishY(0), top = base + 28;
+    lattice(white, DISH.x, DISH.z, base, 28, 3.2, 1.4, 2.8, 0.18);
+    const cabin = new THREE.CylinderGeometry(1.5, 1.1, 5, 14).translate(DISH.x, top + 2.5, DISH.z);
+    white.push(cabin, new THREE.CylinderGeometry(0.15, 1.5, 2, 14).translate(DISH.x, top + 6, DISH.z));
+    const dirA = V(Math.cos(0.6), 0, Math.sin(0.6)); // the arch's plane, across the walkway's line of sight
+    const arc = (r, t) => V(DISH.x + dirA.x * Math.cos(t) * r, RIM_Y + Math.sin(t) * r, DISH.z + dirA.z * Math.cos(t) * r);
+    for (let i = 0; i < 36; i++) {
+      const t0 = (i / 36) * Math.PI, t1 = ((i + 1) / 36) * Math.PI;
+      beam(rust, arc(DISH.r + 0.4, t0), arc(DISH.r + 0.4, t1), 0.35);
+      beam(rust, arc(DISH.r - 1.2, t0), arc(DISH.r - 1.2, t1), 0.3);
+      beam(rust, arc(DISH.r + 0.4, t0), arc(DISH.r - 1.2, t1), 0.18);
+    }
+    for (const [x, z] of [[DISH.x + 31, DISH.z + 14], [DISH.x + 17, DISH.z - 30]]) {
+      lattice(rust, x, z, groundY(x, z) - 0.5, 32, 2.6, 1.2, 2.6, 0.16);
+    }
+    // the walkway: steel deck, rust pipe rails (top 1.1 m, middle 0.55 m, posts every 2 m), a trestle every 6 m
+    dark.push(new THREE.BoxGeometry(1.3, 0.08, WALK_L).translate(0, -0.04, -WALK_L / 2));
+    for (const x of [-0.68, 0.68]) {
+      for (const y of [1.1, 0.55]) beam(rails, V(x, y, 0), V(x, y, -WALK_L), 0.06);
+      for (let z = 0; z >= -WALK_L; z -= 2) beam(rails, V(x, 0, z), V(x, 1.1, z), 0.06);
+    }
+    for (let z = -3; z > -WALK_L; z -= 6) {
+      const yl = groundY(-0.6, z) - 0.3, yr = groundY(0.6, z) - 0.3;
+      if (Math.max(yl, yr) > -0.6) continue; // the cutting near the portals carries the deck itself
+      beam(dark, V(-0.6, yl, z), V(-0.6, -0.08, z), 0.14);
+      beam(dark, V(0.6, yr, z), V(0.6, -0.08, z), 0.14);
+      beam(dark, V(-0.7, -0.14, z), V(0.7, -0.14, z), 0.12);
+      beam(dark, V(-0.6, yl, z), V(0.6, -0.2, z), 0.08);
+      beam(dark, V(0.6, yr, z), V(-0.6, -0.2, z), 0.08);
+    }
+    const mat = (color, rough) => new THREE.MeshStandardMaterial({ color, roughness: rough, metalness: 0.3 });
+    outside.add(new THREE.Mesh(mergeGeometries(white), mat(0xd6d4cc, 0.6)), new THREE.Mesh(mergeGeometries(rust), mat(0x7a3a18, 0.8)),
+      new THREE.Mesh(mergeGeometries(rails), mat(0x8a2a14, 0.7)), new THREE.Mesh(mergeGeometries(dark), mat(0x2c2c2e, 0.8)));
+  }
+  { // portal faces: pinkish tuff blocks round the tunnel arch, slightly inside the rough tunnel walls so no gap shows
+    const stone = canvasTex(256, 256, (g) => {
+      g.fillStyle = '#2a201c'; g.fillRect(0, 0, 256, 256);
+      for (let row = 0; row < 8; row++) for (let i = -1; i < 5; i++) {
+        const x = i * 64 + (row % 2) * 32, k = 0.75 + 0.45 * hash(row * 31.7 + i * 7.3);
+        g.fillStyle = shade(150, 112, 102, k); g.fillRect(x + 2, row * 32 + 2, 60, 28);
+      }
+    }, [0.5, 0.5]);
+    const shape = new THREE.Shape().moveTo(-12, -10).lineTo(12, -10).lineTo(12, 12).lineTo(-12, 12).lineTo(-12, -10);
+    const r = R - 0.2;
+    shape.holes.push(new THREE.Path().moveTo(-r, -0.3).lineTo(r, -0.3).lineTo(r, HW).absarc(0, HW, r, 0, Math.PI, false).lineTo(-r, -0.3));
+    const geo = new THREE.ShapeGeometry(shape, 24), mat = new THREE.MeshStandardMaterial({ map: stone, roughness: 0.95 });
+    const exit = new THREE.Mesh(geo, mat), entry = new THREE.Mesh(geo, mat);
+    exit.rotation.y = Math.PI;      // faces the walkway, which runs toward -z
+    entry.position.z = -WALK_L;
+    outside.add(exit, entry);
+  }
+  // night sky, moon, stars and a ring of far mountains, all following the camera so they never get closer
+  const sky = new THREE.Group();
+  outScene.add(sky);
+  const MOON = new THREE.Vector3().setFromSphericalCoords(1, Math.PI / 2 - 16 * DEG, Math.PI - 28 * DEG); // 28 deg right, 16 deg up
+  {
+    const dome = new THREE.SphereGeometry(1000, 32, 16), p = dome.attributes.position.array, c = new Float32Array(p.length);
+    for (let i = 0; i < p.length; i += 3) {
+      // dark enough that the sky becomes sparse dots, paler toward the horizon; black below it, which is what
+      // shows down past the bridge where there is no ground
+      const t = Math.max(0, p[i + 1] / 1000), k = p[i + 1] < 0 ? 0 : (1 - t) ** 3;
+      c.set([0.003 + 0.016 * k, 0.004 + 0.021 * k, 0.009 + 0.04 * k], i);
+    }
+    dome.setAttribute('color', new THREE.BufferAttribute(c, 3));
+    sky.add(new THREE.Mesh(dome, new THREE.MeshBasicMaterial({ vertexColors: true, side: THREE.BackSide, fog: false, depthWrite: false })));
+    const moon = new THREE.Mesh(new THREE.CircleGeometry(20, 32), new THREE.MeshBasicMaterial({ color: new THREE.Color(1.6, 1.55, 1.4), fog: false }));
+    moon.position.copy(MOON).multiplyScalar(900);
+    moon.lookAt(0, 0, 0);
+    const stars = new Float32Array(600 * 3), v = new THREE.Vector3();
+    for (let i = 0; i < 600; i++) {
+      v.set(hash(i * 3.1) * 2 - 1, hash(i * 5.7 + 1) * 0.9 + 0.08, hash(i * 9.3 + 2) * 2 - 1);
+      v.normalize().multiplyScalar(950).toArray(stars, i * 3);
+    }
+    const sg = new THREE.BufferGeometry().setAttribute('position', new THREE.BufferAttribute(stars, 3));
+    const ring = [], N = 220;
+    for (let i = 0; i <= N; i++) {
+      const a = (i / N) * TAU, rr = 520 + 90 * simplex.noise(i * 0.07, 3);
+      const h = 35 + 70 * Math.abs(simplex.noise(i * 0.045, 7)) + 25 * Math.abs(simplex.noise(i * 0.2, 9));
+      ring.push(Math.cos(a) * rr, -60, Math.sin(a) * rr, Math.cos(a) * rr, h, Math.sin(a) * rr);
+    }
+    const mg = new THREE.BufferGeometry().setAttribute('position', new THREE.Float32BufferAttribute(ring, 3));
+    const idx = [];
+    for (let i = 0; i < N; i++) idx.push(2 * i, 2 * i + 1, 2 * i + 2, 2 * i + 1, 2 * i + 3, 2 * i + 2);
+    mg.setIndex(idx);
+    sky.add(moon, new THREE.Points(sg, new THREE.PointsMaterial({ size: 1.6, sizeAttenuation: false, color: 0x8f9bbd, fog: false })),
+      new THREE.Mesh(mg, new THREE.MeshBasicMaterial({ color: 0x05070c, side: THREE.DoubleSide, fog: false })));
+  }
+  const moonLight = new THREE.DirectionalLight(0xaebbd8, 0.9);
+  moonLight.position.copy(MOON).multiplyScalar(50);
+  sky.add(moonLight, moonLight.target);
+  const beam2 = beam.clone(), spill2 = spill.clone(); // the torch lights the outdoors too
+  outScene.add(new THREE.HemisphereLight(0x33405e, 0x0b0907, 0.35), beam2, beam2.target, spill2, spill2.target);
+  renderer.compile(outScene, camera); // no shader compile stall the first time a walkway comes into view
 
   // ---------- hand holding the torch (drawn in its own scene, on top of everything) ----------
-  // Real size in metres, in camera space, like an FPS weapon: the forearm comes in from off-screen lower left,
-  // the left fist wraps the barrel (knuckles up and outward, thumb along the top) and the torch points into the tunnel.
+  // A left hand at real size (metres) in camera space, posed like an FPS view model: forearm from off-screen lower
+  // left, the fist round the barrel in a diagonal power grip. Angles and proportions: docs/hand-anatomy.md.
   const skin = new THREE.MeshStandardMaterial({ color: 0x3e2d25, roughness: 0.85 });
   const metal = new THREE.MeshStandardMaterial({ color: 0x2b2d33, metalness: 0.3, roughness: 0.45 });
   const chrome = new THREE.MeshStandardMaterial({ color: 0x8b9099, metalness: 0.9, roughness: 0.3 });
-  const hand = new THREE.Group();  // origin = centre of the grip
+  const hand = new THREE.Group();  // origin = centre of the grip, on the barrel axis
   const torch = new THREE.Group(); // turns toward the target; +Z is the beam
   hand.add(torch);
   const part = (geo, mat, x, y, z) => { const m = new THREE.Mesh(geo, mat); m.position.set(x, y, z); torch.add(m); return m; };
   const alongZ = (geo) => geo.rotateX(Math.PI / 2);
-  part(alongZ(new THREE.CylinderGeometry(0.016, 0.016, 0.2, 20)), metal, 0, 0, 0);       // barrel, tail at z = -0.1
-  part(alongZ(new THREE.CylinderGeometry(0.025, 0.016, 0.045, 20)), metal, 0, 0, 0.12);   // head flares toward the lens
-  part(new THREE.TorusGeometry(0.024, 0.003, 8, 24), chrome, 0, 0, 0.143);              // bezel
-  for (let f = 0; f < 4; f++) {                                                          // fingers round the barrel
-    const z = -0.033 + f * 0.022;
-    part(new THREE.TorusGeometry(0.0245, 0.0085, 8, 16, 4.3), skin, 0, 0, z).rotation.z = 2.36; // knuckle -> under -> far side
-    part(new THREE.SphereGeometry(0.0105, 10, 8), skin, -0.0173, 0.0173, z);             // knuckle
+  const grip = await gripArm(); // CC0 wrad-arms viewmodel rig, left arm posed round the barrel; null if it can't load
+  const RB = grip ? grip.radius : 0.016;
+  part(alongZ(new THREE.CylinderGeometry(RB, RB, 0.17, 20)), metal, 0, 0, 0.015);          // barrel, tail just past the little finger
+  part(alongZ(new THREE.CylinderGeometry(RB + 0.009, RB, 0.045, 20)), metal, 0, 0, 0.12);  // head out of the thumb web
+  part(new THREE.TorusGeometry(RB + 0.008, 0.003, 8, 24), chrome, 0, 0, 0.143);          // bezel
+  const led = part(new THREE.SphereGeometry(0.005, 12, 8), new THREE.MeshBasicMaterial({ color: new THREE.Color(0.35, 4, 0.9) }), 0, RB + 0.001, -0.058);
+  // the forearm points from a reference elbow low on the left toward the wrist, so it leaves through the
+  // bottom-left corner whatever the aim (view models are held higher than a real hand would be)
+  const ELBOW = new THREE.Vector3(-0.3, -0.4, 0.1), SHOULDER_TO_ELBOW = new THREE.Vector3(0.3, 0.5, -0.8).normalize();
+  const Y = new THREE.Vector3(0, 1, 0), wristPos = new THREE.Vector3(), wristQ = new THREE.Quaternion();
+  const dirV = new THREE.Vector3(), handX = new THREE.Vector3(), zV = new THREE.Vector3(), basis = new THREE.Matrix4();
+
+  async function gripArm() {
+    const gltf = await new GLTFLoader().loadAsync('assets/models/arms.glb').catch(() => null);
+    if (!gltf) return null;
+    const S = 0.1;                                  // model units are decimetres
+    const B = (n) => gltf.scene.getObjectByName(THREE.PropertyBinding.sanitizeNodeName(n)); // 'wrist.l' loads as 'wristl'
+    let mesh = null;
+    gltf.scene.traverse((o) => { if (o.isSkinnedMesh) mesh = o; });
+    if (!mesh || !B('wrist.l')) return null;
+    mesh.material = skin;
+    mesh.frustumCulled = false;
+    B('shoulder.r').scale.setScalar(1e-4);         // only the left arm is used
+    gltf.scene.updateMatrixWorld(true);
+    const wrist = B('wrist.l');
+    const toWrist = wrist.matrixWorld.clone().invert();
+    const W = (b) => b.getWorldPosition(new THREE.Vector3()).applyMatrix4(toWrist); // position in wrist space
+    const FING = ['index', 'middle', 'ring', 'pinky'];
+    const knuckle = FING.map((f) => W(B(`finger_${f}1.l`)));
+    const radial = knuckle[0].clone().sub(knuckle[3]).normalize();   // little -> index side
+    const distal = knuckle[1].clone().normalize();                   // wrist -> middle knuckle
+    const palm = new THREE.Vector3().crossVectors(radial, distal).normalize();
+    if (palm.dot(W(B('finger_thumb1.l')).sub(knuckle[1])) < 0) palm.negate(); // palmar side = the thumb's side
+    const palmW = palm.clone().transformDirection(wrist.matrixWorld);
+    const turn = (bone, axisW, deg) => {          // rotate a bone about a world axis through its own origin
+      const pq = bone.parent.getWorldQuaternion(new THREE.Quaternion());
+      bone.quaternion.premultiply(pq.clone().invert().multiply(new THREE.Quaternion().setFromAxisAngle(axisW, deg * DEG)).multiply(pq));
+      bone.updateMatrixWorld(true);
+    };
+    // MP, PIP, DIP flexion (deg) for a 3 cm barrel, deeper toward the little finger in the diagonal grip
+    const ANG = { index: [50, 75, 40], middle: [58, 80, 45], ring: [62, 85, 45], pinky: [66, 85, 45] };
+    const fit = {};
+    for (const f of FING) {
+      const bones = [1, 2, 3].map((k) => B(`finger_${f}${k}.l`));
+      const dirW = bones[1].getWorldPosition(new THREE.Vector3()).sub(bones[0].getWorldPosition(new THREE.Vector3())).normalize();
+      const axisW = new THREE.Vector3().crossVectors(dirW, palmW).normalize();
+      bones.forEach((b, k) => turn(b, axisW, ANG[f][k]));
+      fit[f] = circumcircle(W(bones[0]), W(bones[1]), W(bones[2])); // the joint centres wrap the barrel
+    }
+    // barrel axis: diagonal across the palm, from the hypothenar heel out through the thumb web,
+    // 40 deg off the knuckle line toward the fingertips, through the middle of the curled fingers
+    const OBLIQUE = 40 * DEG;
+    const D = radial.clone().multiplyScalar(Math.cos(OBLIQUE)).addScaledVector(distal, Math.sin(OBLIQUE)).normalize();
+    const C = fit.middle.centre.clone().add(fit.ring.centre).multiplyScalar(0.5);
+    const meanR = (fit.index.radius + fit.middle.radius + fit.ring.radius + fit.pinky.radius) / 4;
+    const radius = THREE.MathUtils.clamp(meanR * S - 0.01, 0.012, 0.02);
+    // thumb: swing it from the CMC so the tip lies on the barrel past the index finger, then MP 20 and IP 18
+    const T = [1, 2, 3].map((k) => B(`finger_thumb${k}.l`));
+    const side = W(T[0]).sub(C); side.addScaledVector(D, -side.dot(D)).normalize();
+    const goal = C.clone().addScaledVector(D, fit.index.centre.clone().sub(C).dot(D) + 0.3)
+      .addScaledVector(side, radius / S + 0.09).applyMatrix4(wrist.matrixWorld);
+    const base = T[0].getWorldPosition(new THREE.Vector3());
+    const tip = new THREE.Vector3(0, 0.28, 0).applyMatrix4(T[2].matrixWorld);
+    const u = tip.sub(base).normalize(), v = goal.sub(base).normalize();
+    turn(T[0], new THREE.Vector3().crossVectors(u, v).normalize(), u.angleTo(v) / DEG);
+    const towardAxis = side.clone().negate().transformDirection(wrist.matrixWorld);
+    const tDir = T[2].getWorldPosition(new THREE.Vector3()).sub(T[1].getWorldPosition(new THREE.Vector3())).normalize();
+    const tAxis = new THREE.Vector3().crossVectors(tDir, towardAxis).normalize();
+    turn(T[1], tAxis, 20);
+    turn(T[2], tAxis, 18);
+    // wrist frame in torch space: barrel axis -> +Z, back of the hand -> up and toward the eye, which sits
+    // above and to the right of a hand in the lower-left corner (+X is the screen's left)
+    const back = palm.clone().negate(); back.addScaledVector(D, -back.dot(D)).normalize();
+    const m0 = new THREE.Matrix4().makeBasis(D, back, new THREE.Vector3().crossVectors(D, back));
+    const up = new THREE.Vector3(-0.59, 0.81, 0), Z = new THREE.Vector3(0, 0, 1);
+    const m1 = new THREE.Matrix4().makeBasis(Z, up, new THREE.Vector3().crossVectors(Z, up));
+    const q = new THREE.Quaternion().setFromRotationMatrix(m1.multiply(m0.transpose()));
+    const p = C.clone().multiplyScalar(S).applyQuaternion(q).negate();
+    // the forearm, upper arm and shoulder bones are driven directly in hand space every frame
+    const fore = B('forearm.l'), bicep = B('bicep.l'), shoulder = B('shoulder.l');
+    const lenF = wrist.position.length() * S, lenB = fore.position.length() * S, lenS = bicep.position.length() * S;
+    for (const b of [fore, bicep, shoulder]) { hand.add(b); b.scale.setScalar(S); }
+    hand.add(gltf.scene);
+    return { radius, q, p, wrist, fore, bicep, shoulder, lenF, lenB, lenS };
   }
-  part(new RoundedBoxGeometry(0.026, 0.05, 0.1, 2, 0.011), skin, -0.026, 0.004, -0.02).rotation.z = 0.55; // back of the hand
-  part(alongZ(new THREE.CapsuleGeometry(0.0085, 0.045, 4, 10)), skin, 0.006, 0.024, 0.028);           // thumb on top
-  const WRIST = new THREE.Vector3(-0.012, -0.004, -0.075);
-  part(new THREE.SphereGeometry(0.027, 14, 10), skin, WRIST.x, WRIST.y, WRIST.z);
-  // forearm: thick near end off-screen, tapering to the wrist; re-aimed every frame so the wrist bends
-  const forearm = new THREE.Mesh(new THREE.CylinderGeometry(0.027, 0.046, 1, 18).translate(0, 0.5, 0), skin);
-  hand.add(forearm);
-  const ELBOW = new THREE.Vector3(-0.14, -0.3, 0.22), UP = new THREE.Vector3(0, 1, 0), wristPos = new THREE.Vector3();
-  const led = part(new THREE.SphereGeometry(0.005, 12, 8), new THREE.MeshBasicMaterial({ color: new THREE.Color(0.35, 4, 0.9) }), 0, 0.0165, -0.075);
+
+  function circumcircle(a, b, c) { // centre and radius of the circle through three points
+    const ab = b.clone().sub(a), ac = c.clone().sub(a), n = new THREE.Vector3().crossVectors(ab, ac);
+    const t = new THREE.Vector3().crossVectors(n, ab).multiplyScalar(ac.lengthSq())
+      .add(new THREE.Vector3().crossVectors(ac, n).multiplyScalar(ab.lengthSq())).divideScalar(2 * n.lengthSq());
+    return { centre: a.clone().add(t), radius: t.length() };
+  }
   const glow = new THREE.Sprite(new THREE.SpriteMaterial({
     map: (() => {
       const c = document.createElement('canvas'); c.width = c.height = 64;
@@ -442,11 +806,12 @@ async function start() {
     const w = Math.max(1, canvas.clientWidth), h = Math.max(1, canvas.clientHeight);
     const dpr = Math.min(window.devicePixelRatio || 1, 2); // 3x phones: the full-screen character pass is the cost
     const forced = Number(params.get('cell'));
-    const cssCell = forced >= 2 && forced <= 32 ? forced : Math.min(4, Math.max(3, Math.round(2.5 + w / 1000)));
+    const cssCell = forced >= 1 && forced <= 32 ? forced : (w < 600 ? 1.5 : 2);
     renderer.setPixelRatio(dpr);
     renderer.setSize(w, h, false);
     renderer.getDrawingBufferSize(bufferSize);
-    const cell = Math.max(4, Math.round(cssCell * dpr));
+    const cell = Math.max(3, Math.round(cssCell * dpr));
+    const K = K_FORCED || (cell <= 4 ? 1 : 3);
     const cols = Math.ceil(bufferSize.x / cell), rows = Math.ceil(bufferSize.y / cell);
     Object.assign(L, { w, h, W: bufferSize.x, H: bufferSize.y, cols, rows, cell,
       offX: Math.floor((cols * cell - bufferSize.x) / 2), offY: Math.floor((rows * cell - bufferSize.y) / 2) });
@@ -471,22 +836,31 @@ async function start() {
     const insetL = parseFloat(cs.paddingLeft) || 0, insetB = parseFloat(cs.paddingBottom) || 0;
     const { w, h } = L, portrait = w < h;
     const tanV = Math.tan(camera.fov * DEG / 2), tanH = tanV * camera.aspect, d = 0.42;
-    const px = Math.min(h * 0.3, w * 0.4);                    // on-screen size of the fist + torch
+    const px = portrait ? Math.min(h * 0.26, w * 0.34) : Math.min(h * 0.3, w * 0.4); // on-screen size of fist + torch
     hand.scale.setScalar((px / h) * 2 * d * tanV / 0.16);
     const nx = -1 + 2 * (insetL + w * (portrait ? 0.26 : 0.2)) / w;
     const ny = -1 + 2 * (insetB + h * (portrait ? 0.2 : 0.24)) / h;
     hand.position.set(nx * tanH * d, ny * tanV * d, -d);
   }
 
+  // At 3-4 device px a font glyph is a grey smudge, so small cells get hand-drawn 3x3 pixel forms of the same ten
+  // characters: each step adds ink and keeps a recognisable shape ( . : - + = x # % @ ).
+  const TINY = ['.........', '....#....', '.#.....#.', '...###...', '.#.###.#.', '###...###',
+    '#.#.#.#.#', '#.#####.#', '####.####', '#########'];
   function glyphs(cell) {
     const c = document.createElement('canvas');
     c.width = cell * CHARS.length; c.height = cell;
     const g = c.getContext('2d', { willReadFrequently: true });
     g.fillStyle = '#fff'; g.textAlign = 'center'; g.textBaseline = 'middle';
     g.font = `bold ${Math.round(cell * 1.15)}px Menlo, Consolas, "DejaVu Sans Mono", "Roboto Mono", "Courier New", monospace`;
+    const px = (i, n) => Math.round((n * cell) / 3);
     // a 6-10 px glyph is only a few grey pixels, so order the slots by how much each one really covers
     const order = [...CHARS].map((ch, i) => {
-      g.fillText(ch, (i + 0.5) * cell, cell * 0.54);
+      if (cell <= 4) {
+        [...TINY[i]].forEach((on, k) => {
+          if (on === '#') g.fillRect(i * cell + px(i, k % 3), px(i, (k / 3) | 0), px(i, (k % 3) + 1) - px(i, k % 3), px(i, ((k / 3) | 0) + 1) - px(i, (k / 3) | 0));
+        });
+      } else g.fillText(ch, (i + 0.5) * cell, cell * 0.54);
       const d = g.getImageData(i * cell, 0, cell, cell).data;
       let ink = 0;
       for (let k = 3; k < d.length; k += 4) ink += d[k];
@@ -543,12 +917,12 @@ async function start() {
   }
 
   // ---------- loop (paused when hidden or scrolled out of an embedding page) ----------
-  let walked = 0, fade = 0, last = 0, raf = 0, running = false, visible = !document.hidden, onScreen = true;
+  let walked = START, fade = 0, last = 0, raf = 0, running = false, visible = !document.hidden, onScreen = true;
   function frame(now) {
     raf = requestAnimationFrame(frame);
     const dt = Math.min(0.1, (now - last) / 1000 || 0);
     last = now;
-    const speed = reducedMotion.matches ? SPEED * 0.35 : SPEED;
+    const speed = PAUSE ? 0 : reducedMotion.matches ? SPEED * 0.35 : SPEED;
     walked += speed * dt;
     camera.position.z = -walked;
     if (BOB) {
@@ -557,7 +931,14 @@ async function start() {
       camera.position.x = Math.sin(phase / 2) * 0.012;
     }
     for (const seg of segments) if (seg.z0 > camera.position.z + 1) { seg.z0 -= SEGS * SEG_L; buildSegment(seg); }
-    track.position.z = TRACK_P * Math.ceil(camera.position.z / TRACK_P);
+    // outdoors only while a walkway slot is among the built ones; the lid closes the tunnel where the walls stop
+    let zone = -1, far = segments[0];
+    for (const seg of segments) { if (seg.walk) zone = Math.floor(slot(seg) / CYCLE); if (seg.z0 < far.z0) far = seg; }
+    outPass.enabled = zone >= 0 && !pmndrs;
+    if (zone >= 0) outside.position.z = zoneExit(zone);
+    cap.visible = !far.walk;
+    cap.position.z = far.z0;
+    sky.position.copy(camera.position);
 
     aim.lerp(aimGoal, 1 - Math.exp(-dt / 0.08)); // ~0.25 s to settle
     const tanV = Math.tan(camera.fov * DEG / 2);
@@ -566,14 +947,27 @@ async function start() {
     local.copy(target).sub(camera.position);   // hand space = camera space (the camera never rotates)
     hand.updateMatrixWorld();
     torch.lookAt(local);
-    wristPos.copy(WRIST).applyQuaternion(torch.quaternion).sub(ELBOW);
-    forearm.position.copy(ELBOW);
-    forearm.scale.y = wristPos.length();
-    forearm.quaternion.setFromUnitVectors(UP, wristPos.normalize());
+    if (grip) {
+      wristQ.copy(torch.quaternion).multiply(grip.q);                 // wrist pose in hand space, set by the torch
+      wristPos.copy(grip.p).applyQuaternion(torch.quaternion);
+      dirV.copy(wristPos).sub(ELBOW).normalize();
+      // forearm along dirV, twisted to match the hand so the wrist doesn't wring
+      handX.set(1, 0, 0).applyQuaternion(wristQ);
+      handX.addScaledVector(dirV, -handX.dot(dirV)).normalize();
+      basis.makeBasis(handX, dirV, zV.crossVectors(handX, dirV));
+      grip.fore.quaternion.setFromRotationMatrix(basis);
+      grip.fore.position.copy(wristPos).addScaledVector(dirV, -grip.lenF);
+      grip.wrist.quaternion.copy(grip.fore.quaternion).invert().multiply(wristQ);
+      grip.bicep.quaternion.setFromUnitVectors(Y, SHOULDER_TO_ELBOW); // upper arm out of sight, down and behind
+      grip.bicep.position.copy(grip.fore.position).addScaledVector(SHOULDER_TO_ELBOW, -grip.lenB);
+      grip.shoulder.quaternion.copy(grip.bicep.quaternion);
+      grip.shoulder.position.copy(grip.bicep.position).addScaledVector(SHOULDER_TO_ELBOW, -grip.lenS);
+    }
     torch.updateMatrixWorld();
     head.copy(HEAD).applyMatrix4(torch.matrixWorld).add(camera.position);
     beam.position.copy(head); spill.position.copy(head); bounce.position.copy(camera.position);
     beam.target.position.copy(target); spill.target.position.copy(target);
+    beam2.position.copy(head); spill2.position.copy(head); beam2.target.position.copy(target); spill2.target.position.copy(target);
 
     fade = Math.min(1, fade + dt / 1.4);
     U.uFade.value = fade * fade;
