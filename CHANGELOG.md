@@ -1,5 +1,8 @@
 # Changelog
 
+## 2026-11-07
+- 新增 `ascii-cave/`：ASCII 字元畫的鐵道隧道互動作品，網址 https://gassao1998.github.io/ascii-cave/ ，還沒連進首頁。原始碼在私人 repo `gassao1998/ascii-cave`（`d0404eb`），這裡只放網頁要用的 `index.html`、`preview.jpg` 與 11 張塗鴉貼圖。
+
 ## 2026-11-05
 - commit 訊息改寫：舊 commit 拿掉誰要求、誰決定的寫法，已推上 GitHub 的只改標題，檔案內容不動。新舊編號對照在 `docs/commit-map-2026-11-04.tsv`，舊歷史在 tag `archive/pre-rewrite-2026-11-04/<分支>`。
 - HANDOFF 與 README 的同樣寫法拿掉，待辦改寫成要做的動作。

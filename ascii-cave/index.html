@@ -1,0 +1,594 @@
+<!DOCTYPE html>
+<html lang="zh-Hant">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>ASCII 洞窟</title>
+<meta name="description" content="拿著手電筒走進一條沒有盡頭的鐵道隧道，整個畫面用 ASCII 字元畫出來，牆上貼滿在亞美尼亞拍到的塗鴉。點一下畫面，光就照過去。">
+<meta property="og:type" content="website">
+<meta property="og:title" content="ASCII 洞窟">
+<meta property="og:description" content="拿著手電筒走進一條沒有盡頭的鐵道隧道，整個畫面用 ASCII 字元畫出來，牆上貼滿在亞美尼亞拍到的塗鴉。">
+<meta property="og:image" content="https://gassao1998.github.io/ascii-cave/preview.jpg">
+<meta name="theme-color" content="#000000">
+<style>
+  /* the work is black in both themes; the blocks below only restate it so either theme stamp resolves */
+  :root {
+    --bg: #000;
+    --hint: rgba(232, 226, 210, 0.34);
+    --text: #d8d2c4;
+    color-scheme: dark;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root:not([data-theme="light"]) { --bg: #000; --hint: rgba(232, 226, 210, 0.34); --text: #d8d2c4; color-scheme: dark; }
+  }
+  :root[data-theme="dark"] { --bg: #000; --hint: rgba(232, 226, 210, 0.34); --text: #d8d2c4; color-scheme: dark; }
+
+  html, body { margin: 0; height: 100%; overflow: hidden; background: var(--bg); }
+  body { -webkit-user-select: none; user-select: none; -webkit-touch-callout: none; -webkit-tap-highlight-color: transparent; }
+  canvas { position: fixed; inset: 0; width: 100%; height: 100%; display: block; touch-action: none; outline: none; }
+  #msg {
+    position: fixed; left: 0; right: 0; margin: 0; padding: 0 16px;
+    bottom: calc(env(safe-area-inset-bottom, 0px) + 6vh);
+    text-align: center; color: var(--hint); pointer-events: none;
+    font: 13px/1.5 system-ui, -apple-system, "PingFang TC", "Noto Sans TC", "Microsoft JhengHei", sans-serif;
+    letter-spacing: 0.14em; transition: opacity 1.2s ease;
+  }
+  #msg.off { opacity: 0; }
+  #msg.err { color: var(--text); }
+  #safe {
+    position: fixed; visibility: hidden; pointer-events: none;
+    padding: env(safe-area-inset-top, 0px) env(safe-area-inset-right, 0px) env(safe-area-inset-bottom, 0px) env(safe-area-inset-left, 0px);
+  }
+</style>
+<script type="importmap">
+{
+  "imports": {
+    "three": "https://cdn.jsdelivr.net/npm/three@0.170.0/build/three.module.min.js",
+    "three/addons/": "https://cdn.jsdelivr.net/npm/three@0.170.0/examples/jsm/",
+    "postprocessing": "https://cdn.jsdelivr.net/npm/postprocessing@6.39.6/build/index.min.js"
+  }
+}
+</script>
+</head>
+<body>
+<canvas id="view" role="img" aria-label="ASCII 字元畫的鐵道隧道，手電筒一直往前照，點擊或觸控畫面可以改變光照的方向"></canvas>
+<p id="msg" hidden>點畫面照亮</p>
+<div id="safe"></div>
+<script type="module">
+import * as THREE from 'three';
+import { EffectComposer } from 'three/addons/postprocessing/EffectComposer.js';
+import { RenderPass } from 'three/addons/postprocessing/RenderPass.js';
+import { ShaderPass } from 'three/addons/postprocessing/ShaderPass.js';
+import { SimplexNoise } from 'three/addons/math/SimplexNoise.js';
+import { mergeGeometries } from 'three/addons/utils/BufferGeometryUtils.js';
+import { RoundedBoxGeometry } from 'three/addons/geometries/RoundedBoxGeometry.js';
+
+const canvas = document.getElementById('view');
+const msg = document.getElementById('msg');
+const safeProbe = document.getElementById('safe');
+const params = new URLSearchParams(location.search);
+
+function fail() {
+  msg.textContent = '這個瀏覽器無法顯示這件作品，需要支援 WebGL 2 的瀏覽器。';
+  msg.className = 'err';
+  msg.hidden = false;
+}
+if (!document.createElement('canvas').getContext('webgl2')) fail();
+else start().catch((e) => { console.error(e); fail(); });
+
+async function start() {
+  // ---------- constants ----------
+  const R = 2.3, HW = 2.0, S = 2 * HW + Math.PI * R;   // tunnel half width, wall height, profile length
+  const NS = 72, DS = S / NS;                          // samples around the arch
+  const DZ = 0.25, SEG_L = 12, NZ = SEG_L / DZ, SEGS = 6; // segment layout: 6 x 12 m of wall ahead
+  const EYE = 1.6, SPEED = 1.15;                       // eye height, walk speed (m/s)
+  // scene texels per cell side: 3 keeps a 390x844 phone above 24 fps with 3 px cells (README has the numbers)
+  const K = [2, 3, 4].includes(Number(params.get('k'))) ? Number(params.get('k')) : 3;
+  const CHARS = ' .:-=+*#%@';
+  const GRAFFITI = ['cat', 'lilac', 'blue', 'bfd', 'code', 'yellow-e', 'love', 'fists', 'green', 'pillar', 'scam'];
+  const BOB = params.get('bob') === '1';
+  const reducedMotion = matchMedia('(prefers-reduced-motion: reduce)');
+  const DEG = Math.PI / 180;
+
+  // ---------- renderer & passes ----------
+  const renderer = new THREE.WebGLRenderer({ canvas, antialias: false, powerPreference: 'high-performance' });
+  renderer.setClearColor(0x000000, 1);
+
+  const scene = new THREE.Scene();
+  scene.fog = new THREE.Fog(0x000000, 6, 40);
+  const camera = new THREE.PerspectiveCamera(60, 1, 0.05, 90);
+  camera.position.set(0, EYE, 0);
+
+  const handScene = new THREE.Scene();
+  const handCamera = new THREE.PerspectiveCamera(60, 1, 0.01, 5);
+
+  const asciiShader = {
+    uniforms: {
+      tDiffuse: { value: null },
+      tGlyph: { value: null },
+      uGrid: { value: new THREE.Vector2(1, 1) },
+      uOffset: { value: new THREE.Vector2() },
+      uTexel: { value: new THREE.Vector2() },
+      uCell: { value: 8 },
+      uFade: { value: 0 },
+      uRaw: { value: params.get('ascii') === '0' ? 1 : 0 }, // ?ascii=0 shows the scene behind the characters
+    },
+    vertexShader: /* glsl */`
+      void main() { gl_Position = vec4(position.xy, 0.0, 1.0); }`,
+    fragmentShader: /* glsl */`
+      uniform sampler2D tDiffuse;
+      uniform sampler2D tGlyph;
+      uniform vec2 uGrid, uOffset, uTexel;
+      uniform float uCell, uFade, uRaw;
+      const float N = ${CHARS.length}.0;
+      void main() {
+        vec2 p = gl_FragCoord.xy + uOffset;
+        vec2 cell = floor(p / uCell);
+        vec2 local = (p - cell * uCell) / uCell;
+        vec2 uv = (cell + 0.5) / uGrid;
+        // four bilinear taps = box average of the cell's 4x4 scene texels (steadier than one sample)
+        vec3 c = texture2D(tDiffuse, uv - uTexel).rgb + texture2D(tDiffuse, uv + uTexel).rgb
+               + texture2D(tDiffuse, uv + vec2(uTexel.x, -uTexel.y)).rgb + texture2D(tDiffuse, uv + vec2(-uTexel.x, uTexel.y)).rgb;
+        // tone-map the luminance only (Reinhard), so paint inside the hot spot keeps its hue and some contrast
+        float lin = dot(c, vec3(0.2126, 0.7152, 0.0722)), t = lin * 0.5;
+        c = min(c * (t / (1.0 + t)) / max(lin, 1e-5), 1.0);
+        c = pow(c, vec3(1.0 / 2.2)) * uFade;     // perceptual space: glyph density follows what the eye sees
+        float l = dot(c, vec3(0.2126, 0.7152, 0.0722));
+        float idx = min(floor(l * N * 1.08), N - 1.0); // darkest tenth stays empty: unlit rock is black
+        float m = texture2D(tGlyph, vec2((idx + local.x) / N, local.y)).r;
+        float peak = max(max(c.r, c.g), max(c.b, 1e-3));
+        vec3 col = c * min(1.0 / peak, (0.35 + 0.65 * l) / max(l, 1e-3)); // dim glyphs keep their hue, never clip it
+        gl_FragColor = vec4(mix(col * m, c, uRaw), 1.0);
+      }`,
+  };
+
+  const composer = new EffectComposer(renderer);
+  composer.setPixelRatio(1); // its targets are sized in scene texels (K per character cell), not screen pixels
+  composer.addPass(new RenderPass(scene, camera));
+  const handPass = new RenderPass(handScene, handCamera);
+  handPass.clear = false;
+  handPass.clearDepth = true; // the hand is never hidden by the tunnel
+  composer.addPass(handPass);
+  const asciiPass = new ShaderPass(asciiShader);
+  composer.addPass(asciiPass);
+  const U = asciiPass.uniforms;
+
+  // ?ascii=pmndrs swaps in the postprocessing package's ASCIIEffect; kept only to compare with the shader above (see README)
+  const pmndrs = params.get('ascii') === 'pmndrs' ? await (async () => {
+    const PP = await import('postprocessing');
+    const pc = new PP.EffectComposer(renderer, { frameBufferType: THREE.HalfFloatType });
+    pc.addPass(new PP.RenderPass(scene, camera));
+    const hp = new PP.RenderPass(handScene, handCamera);
+    hp.clearPass.setClearFlags(false, true, false);
+    pc.addPass(hp);
+    pc.addPass(new PP.EffectPass(camera, new PP.ToneMappingEffect()));
+    const fx = new PP.ASCIIEffect({ asciiTexture: new PP.ASCIITexture({ characters: CHARS }) });
+    pc.addPass(new PP.EffectPass(camera, fx));
+    return { composer: pc, fx };
+  })() : null;
+
+  // ---------- lights ----------
+  scene.add(new THREE.AmbientLight(0xc4cad8, 0.008));
+  const beam = new THREE.SpotLight(0xfff0dc, 85, 0, 0.34, 0.6, 1.6);   // hot spot with a soft edge
+  const spill = new THREE.SpotLight(0xfff0dc, 3.4, 0, 0.75, 1, 1.6);   // the dim halo around it
+  const bounce = new THREE.PointLight(0xc8ccd8, 0.5, 0, 2);            // light thrown back by the walls: faint near you, gone far away
+  scene.add(beam, beam.target, spill, spill.target, bounce);
+
+  // ---------- tunnel walls ----------
+  const simplex = new SimplexNoise();
+  const fbm = (x, y) => simplex.noise(x, y) * 0.62 + simplex.noise(x * 2.3, y * 2.3) * 0.28 + simplex.noise(x * 5.1, y * 5.1) * 0.1;
+  const prof = { x: 0, y: 0, nx: 0, ny: 0 };
+  function profile(s) { // ideal cross-section point and outward normal at arc length s (left floor -> arch -> right floor)
+    if (s < HW) { prof.x = -R; prof.y = s; prof.nx = -1; prof.ny = 0; }
+    else if (s > S - HW) { prof.x = R; prof.y = S - s; prof.nx = 1; prof.ny = 0; }
+    else { const a = Math.PI - (s - HW) / R; prof.nx = Math.cos(a); prof.ny = Math.sin(a); prof.x = R * prof.nx; prof.y = HW + R * prof.ny; }
+  }
+
+  const GW = NS + 3, GH = NZ + 3;  // padded grid (one extra ring all round for normals)
+  const wallIndex = (() => {
+    const idx = new Uint16Array(NS * NZ * 6);
+    let k = 0;
+    for (let j = 0; j < NZ; j++) for (let i = 0; i < NS; i++) {
+      const a = j * (NS + 1) + i, b = a + 1, c = a + NS + 1, d = c + 1;
+      idx.set([a, b, c, b, d, c], k); k += 6;
+    }
+    return new THREE.BufferAttribute(idx, 1);
+  })();
+  const wallMat = new THREE.MeshStandardMaterial({ vertexColors: true, roughness: 0.95 });
+
+  // ---------- graffiti atlas ----------
+  const images = (await Promise.all(GRAFFITI.map(async (name) => {
+    const img = new Image();
+    img.crossOrigin = 'anonymous'; // opened from file:// the pictures fail to load instead of breaking WebGL
+    img.src = `assets/graffiti/${name}.jpg`;
+    try { await img.decode(); return { name, img }; } catch { return null; }
+  }))).filter(Boolean);
+  const AW = 2048, PAD = 4;
+  images.sort((a, b) => b.img.height - a.img.height);
+  let ax = 0, ay = 0, rowH = 0;
+  for (const e of images) {           // shelf packing
+    if (ax + e.img.width > AW) { ax = 0; ay += rowH + PAD; rowH = 0; }
+    e.x = ax; e.y = ay; ax += e.img.width + PAD; rowH = Math.max(rowH, e.img.height);
+  }
+  const AH = Math.max(1, ay + rowH);
+  const atlasCanvas = document.createElement('canvas');
+  atlasCanvas.width = AW; atlasCanvas.height = AH;
+  const actx = atlasCanvas.getContext('2d');
+  for (const e of images) actx.drawImage(e.img, e.x, e.y);
+  const atlas = new THREE.CanvasTexture(atlasCanvas);
+  atlas.colorSpace = THREE.SRGBColorSpace;
+  atlas.anisotropy = 4;
+  const pieces = images.map((e) => ({
+    name: e.name, aspect: e.img.width / e.img.height,
+    u0: (e.x + 1) / AW, du: (e.img.width - 2) / AW, v0: 1 - (e.y + e.img.height - 1) / AH, dv: (e.img.height - 2) / AH,
+  }));
+  const cat = pieces.find((p) => p.name === 'cat');
+  const others = pieces.filter((p) => p !== cat);
+  const decalMat = new THREE.MeshStandardMaterial({
+    map: atlas, vertexColors: true, transparent: true, depthWrite: false, roughness: 0.85,
+    polygonOffset: true, polygonOffsetFactor: -2, polygonOffsetUnits: -2,
+  });
+
+  // ---------- segments (rebuilt in place when they fall behind, nothing allocated afterwards) ----------
+  const DECAL_VERTS = 6000, DECAL_INDEX = 36000;
+  let serial = 0, bag = [];
+  const rand = (a, b) => a + Math.random() * (b - a);
+  const nextPiece = () => { if (!bag.length) bag = others.slice().sort(() => Math.random() - 0.5); return bag.pop(); };
+
+  const segments = Array.from({ length: SEGS }, (_, k) => {
+    const wall = new THREE.BufferGeometry();
+    for (const [name, size] of [['position', 3], ['normal', 3], ['color', 3]]) {
+      wall.setAttribute(name, new THREE.BufferAttribute(new Float32Array((NS + 1) * (NZ + 1) * size), size).setUsage(THREE.DynamicDrawUsage));
+    }
+    wall.setIndex(wallIndex);
+    const decal = new THREE.BufferGeometry();
+    for (const [name, size] of [['position', 3], ['normal', 3], ['uv', 2], ['color', 4]]) {
+      decal.setAttribute(name, new THREE.BufferAttribute(new Float32Array(DECAL_VERTS * size), size).setUsage(THREE.DynamicDrawUsage));
+    }
+    decal.setIndex(new THREE.BufferAttribute(new Uint16Array(DECAL_INDEX), 1).setUsage(THREE.DynamicDrawUsage));
+    const seg = {
+      z0: 4 - (k + 1) * SEG_L, P: new Float32Array(GW * GH * 3), N: new Float32Array(GW * GH * 3),
+      wall: new THREE.Mesh(wall, wallMat), decal: new THREE.Mesh(decal, decalMat), nv: 0, ni: 0,
+    };
+    seg.wall.frustumCulled = seg.decal.frustumCulled = false; // rebuilt in place, bounds would go stale
+    scene.add(seg.wall, seg.decal);
+    buildSegment(seg);
+    return seg;
+  });
+
+  function buildSegment(seg) {
+    const { P, N } = seg;
+    for (let j = -1; j <= NZ + 1; j++) {
+      const z = seg.z0 + j * DZ;
+      for (let i = -1; i <= NS + 1; i++) {
+        const s = i * DS;
+        profile(s);
+        const y = prof.y;
+        const amp = y < 0.15 ? 0 : Math.min(1, (y - 0.15) / 0.5) * (y < HW ? 0.05 : 0.05 + 0.12 * Math.min(1, (y - HW) / 0.8));
+        const d = amp * fbm(s * 0.75, z * 0.75);
+        const k = ((j + 1) * GW + i + 1) * 3;
+        P[k] = prof.x + prof.nx * d; P[k + 1] = y + prof.ny * d; P[k + 2] = z;
+      }
+    }
+    for (let j = 0; j <= NZ; j++) for (let i = 0; i <= NS; i++) { // central-difference normals, pointing into the tunnel
+      const k = ((j + 1) * GW + i + 1) * 3, ip = k + 3, im = k - 3, jp = k + GW * 3, jm = k - GW * 3;
+      const ax_ = P[ip] - P[im], ay_ = P[ip + 1] - P[im + 1], az_ = P[ip + 2] - P[im + 2];
+      const bx = P[jp] - P[jm], by = P[jp + 1] - P[jm + 1], bz = P[jp + 2] - P[jm + 2];
+      let nx = ay_ * bz - az_ * by, ny = az_ * bx - ax_ * bz, nz = ax_ * by - ay_ * bx;
+      const l = Math.hypot(nx, ny, nz) || 1;
+      N[k] = nx / l; N[k + 1] = ny / l; N[k + 2] = nz / l;
+    }
+    const { position: pos, normal: nor, color: col } = seg.wall.geometry.attributes;
+    const pa = pos.array, na = nor.array, ca = col.array;
+    let v = 0;
+    for (let j = 0; j <= NZ; j++) for (let i = 0; i <= NS; i++, v += 3) {
+      const k = ((j + 1) * GW + i + 1) * 3;
+      pa[v] = P[k]; pa[v + 1] = P[k + 1]; pa[v + 2] = P[k + 2];
+      na[v] = N[k]; na[v + 1] = N[k + 1]; na[v + 2] = N[k + 2];
+      const y = P[k + 1], s = i * DS;
+      const base = y < HW ? 0.32 : 0.32 - 0.08 * Math.min(1, (y - HW) / 1.2);
+      const b = base * (0.7 + 0.4 * simplex.noise(s * 0.33 + 40, P[k + 2] * 0.22)) * (y < 0.6 ? 0.55 + 0.75 * y : 1);
+      ca[v] = b; ca[v + 1] = b * 0.96; ca[v + 2] = b * 0.9;
+    }
+    pos.needsUpdate = nor.needsUpdate = col.needsUpdate = true;
+    placeGraffiti(seg);
+  }
+
+  function placeGraffiti(seg) {
+    seg.nv = seg.ni = 0;
+    const id = serial++;
+    const catSide = id % 4 === 1 ? (Math.floor(id / 4) % 2 ? 1 : -1) : 0; // a big cat every 48 m, alternating walls
+    for (const side of [-1, 1]) {
+      let zTop = seg.z0 + SEG_L - rand(0.05, 0.6);
+      if (side === catSide && cat) {
+        // stretched 1.8x along the wall, like a road marking, so it reads as a cat from down the tunnel
+        const h = 3.0, w = h * cat.aspect * 1.8, zc = seg.z0 + rand(0.6, SEG_L - w - 0.6);
+        fill(seg, side, zc + w + 0.3, zTop);
+        addDecal(seg, side, 0.18, 0.18 + h, zc, zc + w, cat, 1.4);
+        zTop = zc - 0.3;
+      }
+      fill(seg, side, seg.z0 + 0.1, zTop);
+    }
+    const g = seg.decal.geometry;
+    for (const name of ['position', 'normal', 'uv', 'color']) g.attributes[name].needsUpdate = true;
+    g.index.needsUpdate = true;
+    g.setDrawRange(0, seg.ni);
+  }
+
+  function fill(seg, side, zMin, zMax) { // dense, random wall of pieces between zMin and zMax
+    let z = zMax;
+    while (others.length) {
+      const p = nextPiece();
+      let h = rand(1.3, 2.0), w = h * p.aspect;
+      if (w > 3.8) { w = 3.8; h = w / p.aspect; }
+      if (z - w < zMin) break;
+      const y0 = rand(0.2, 0.45);
+      addDecal(seg, side, y0, y0 + h, z - w, z, p, rand(1.05, 1.35));
+      if (Math.random() < 0.45) { // a smaller piece higher up, where the arch starts
+        const q = nextPiece(), qh = Math.min(rand(0.7, 1.0), w / q.aspect), qw = qh * q.aspect, qz = z - rand(0, w - qw);
+        addDecal(seg, side, y0 + h + 0.1, y0 + h + 0.1 + qh, qz - qw, qz, q, rand(0.95, 1.2));
+      }
+      z -= w + rand(0.05, 0.45);
+    }
+  }
+
+  function addDecal(seg, side, y0, y1, zA, zB, p, tint) {
+    // decal follows the wall grid exactly (same samples), lifted 3 cm along the normal
+    const s0 = side < 0 ? y0 : S - y1, s1 = side < 0 ? y1 : S - y0;
+    const i0 = Math.round(s0 / DS), i1 = Math.round(s1 / DS);
+    const j0 = Math.max(0, Math.round((zA - seg.z0) / DZ)), j1 = Math.min(NZ, Math.round((zB - seg.z0) / DZ));
+    const ni = i1 - i0 + 1, nj = j1 - j0 + 1;
+    if (ni < 3 || nj < 3 || seg.nv + ni * nj > DECAL_VERTS || seg.ni + (ni - 1) * (nj - 1) * 6 > DECAL_INDEX) return;
+    const g = seg.decal.geometry, pos = g.attributes.position.array, nor = g.attributes.normal.array;
+    const uv = g.attributes.uv.array, col = g.attributes.color.array, idx = g.index.array;
+    const base = seg.nv;
+    for (let j = j0; j <= j1; j++) for (let i = i0; i <= i1; i++) {
+      const k = ((j + 1) * GW + i + 1) * 3, v = seg.nv++;
+      for (let c = 0; c < 3; c++) { pos[v * 3 + c] = seg.P[k + c] + seg.N[k + c] * 0.03; nor[v * 3 + c] = seg.N[k + c]; }
+      const fz = (j - j0) / (j1 - j0), fs = (i - i0) / (i1 - i0);
+      const u = side < 0 ? 1 - fz : fz, w = side < 0 ? fs : 1 - fs; // text reads left-to-right from the tunnel
+      uv[v * 2] = p.u0 + u * p.du; uv[v * 2 + 1] = p.v0 + w * p.dv;
+      col[v * 4] = col[v * 4 + 1] = col[v * 4 + 2] = tint;
+      col[v * 4 + 3] = i === i0 || i === i1 || j === j0 || j === j1 ? 0 : 1; // edges fade out
+    }
+    for (let j = 0; j < nj - 1; j++) for (let i = 0; i < ni - 1; i++) {
+      const a = base + j * ni + i, c = a + ni, n = seg.ni;
+      idx[n] = a; idx[n + 1] = a + 1; idx[n + 2] = c; idx[n + 3] = a + 1; idx[n + 4] = c + 1; idx[n + 5] = c;
+      seg.ni += 6;
+    }
+  }
+
+  // ---------- track: one merged mesh (floor, rails, sleepers) that hops forward by its 12 m period ----------
+  const TRACK_P = 12;
+  const track = (() => {
+    const zNear = 2.4, len = SEGS * SEG_L + TRACK_P + zNear, parts = [];
+    const tint = (g, r, gg, b, jitter = 0) => {
+      const n = g.attributes.position.count, c = new Float32Array(n * 3), p = g.attributes.position.array;
+      for (let i = 0; i < n; i++) {
+        const zz = ((p[i * 3 + 2] % TRACK_P) + TRACK_P) % TRACK_P; // periodic so the hop is invisible
+        const h = jitter ? 1 - jitter + jitter * 2 * (Math.sin(Math.round(p[i * 3] / 0.4) * 12.9898 + Math.round(zz / 0.4) * 78.233) * 43758.5453 % 1 + 1) / 2 : 1;
+        c.set([r * h, gg * h, b * h], i * 3);
+      }
+      g.setAttribute('color', new THREE.BufferAttribute(c, 3));
+      parts.push(g);
+    };
+    const floor = new THREE.PlaneGeometry(2 * R + 0.8, len, 12, Math.round(len / 0.4));
+    floor.rotateX(-Math.PI / 2).translate(0, 0, zNear - len / 2);
+    tint(floor, 0.2, 0.19, 0.17, 0.35);
+    for (let z = zNear - 0.3; z > zNear - len; z -= 0.6) tint(new THREE.BoxGeometry(2.1, 0.08, 0.22).translate(0, 0.03, z), 0.17, 0.12, 0.08);
+    for (const x of [-0.6, 0.6]) {
+      tint(new THREE.BoxGeometry(0.07, 0.11, len).translate(x, 0.125, zNear - len / 2), 0.12, 0.11, 0.1);
+      tint(new THREE.BoxGeometry(0.075, 0.02, len).translate(x, 0.19, zNear - len / 2), 0.7, 0.68, 0.64); // worn, shiny top
+    }
+    const mesh = new THREE.Mesh(mergeGeometries(parts), new THREE.MeshStandardMaterial({ vertexColors: true, roughness: 0.9 }));
+    mesh.frustumCulled = false;
+    scene.add(mesh);
+    return mesh;
+  })();
+
+  // ---------- hand holding the torch (drawn in its own scene, on top of everything) ----------
+  // Real size in metres, in camera space, like an FPS weapon: the forearm comes in from off-screen lower left,
+  // the left fist wraps the barrel (knuckles up and outward, thumb along the top) and the torch points into the tunnel.
+  const skin = new THREE.MeshStandardMaterial({ color: 0x3e2d25, roughness: 0.85 });
+  const metal = new THREE.MeshStandardMaterial({ color: 0x2b2d33, metalness: 0.3, roughness: 0.45 });
+  const chrome = new THREE.MeshStandardMaterial({ color: 0x8b9099, metalness: 0.9, roughness: 0.3 });
+  const hand = new THREE.Group();  // origin = centre of the grip
+  const torch = new THREE.Group(); // turns toward the target; +Z is the beam
+  hand.add(torch);
+  const part = (geo, mat, x, y, z) => { const m = new THREE.Mesh(geo, mat); m.position.set(x, y, z); torch.add(m); return m; };
+  const alongZ = (geo) => geo.rotateX(Math.PI / 2);
+  part(alongZ(new THREE.CylinderGeometry(0.016, 0.016, 0.2, 20)), metal, 0, 0, 0);       // barrel, tail at z = -0.1
+  part(alongZ(new THREE.CylinderGeometry(0.025, 0.016, 0.045, 20)), metal, 0, 0, 0.12);   // head flares toward the lens
+  part(new THREE.TorusGeometry(0.024, 0.003, 8, 24), chrome, 0, 0, 0.143);              // bezel
+  for (let f = 0; f < 4; f++) {                                                          // fingers round the barrel
+    const z = -0.033 + f * 0.022;
+    part(new THREE.TorusGeometry(0.0245, 0.0085, 8, 16, 4.3), skin, 0, 0, z).rotation.z = 2.36; // knuckle -> under -> far side
+    part(new THREE.SphereGeometry(0.0105, 10, 8), skin, -0.0173, 0.0173, z);             // knuckle
+  }
+  part(new RoundedBoxGeometry(0.026, 0.05, 0.1, 2, 0.011), skin, -0.026, 0.004, -0.02).rotation.z = 0.55; // back of the hand
+  part(alongZ(new THREE.CapsuleGeometry(0.0085, 0.045, 4, 10)), skin, 0.006, 0.024, 0.028);           // thumb on top
+  const WRIST = new THREE.Vector3(-0.012, -0.004, -0.075);
+  part(new THREE.SphereGeometry(0.027, 14, 10), skin, WRIST.x, WRIST.y, WRIST.z);
+  // forearm: thick near end off-screen, tapering to the wrist; re-aimed every frame so the wrist bends
+  const forearm = new THREE.Mesh(new THREE.CylinderGeometry(0.027, 0.046, 1, 18).translate(0, 0.5, 0), skin);
+  hand.add(forearm);
+  const ELBOW = new THREE.Vector3(-0.14, -0.3, 0.22), UP = new THREE.Vector3(0, 1, 0), wristPos = new THREE.Vector3();
+  const led = part(new THREE.SphereGeometry(0.005, 12, 8), new THREE.MeshBasicMaterial({ color: new THREE.Color(0.35, 4, 0.9) }), 0, 0.0165, -0.075);
+  const glow = new THREE.Sprite(new THREE.SpriteMaterial({
+    map: (() => {
+      const c = document.createElement('canvas'); c.width = c.height = 64;
+      const g = c.getContext('2d'), gr = g.createRadialGradient(32, 32, 0, 32, 32, 32);
+      gr.addColorStop(0, 'rgba(120,255,150,1)'); gr.addColorStop(0.35, 'rgba(60,255,110,0.35)'); gr.addColorStop(1, 'rgba(0,255,80,0)');
+      g.fillStyle = gr; g.fillRect(0, 0, 64, 64);
+      return new THREE.CanvasTexture(c);
+    })(),
+    color: new THREE.Color(1, 1.8, 1.1), blending: THREE.AdditiveBlending, depthWrite: false,
+  }));
+  glow.scale.setScalar(0.022);
+  glow.position.copy(led.position);
+  torch.add(glow);
+  handScene.add(hand);
+  // nearly black, like the silhouette in the reference video; light from down the tunnel leaves a thin rim
+  handScene.add(new THREE.HemisphereLight(0x8c96b0, 0x0d0b09, 0.06));
+  const key = new THREE.DirectionalLight(0xfff0dc, 0.1); key.position.set(0.6, 1.2, 0.8);
+  const rim = new THREE.DirectionalLight(0xfff0dc, 1.1); rim.position.set(0.5, 0.9, -1);
+  handScene.add(key, rim);
+  const HEAD = new THREE.Vector3(0, 0, 0.145); // lens, in torch space
+
+  // ---------- layout (resize, rotation, iframe resize) ----------
+  const L = { W: 1, H: 1, cols: 1, rows: 1, cell: 8, offX: 0, offY: 0, w: 1, h: 1 };
+  const bufferSize = new THREE.Vector2();
+  function layout() {
+    const w = Math.max(1, canvas.clientWidth), h = Math.max(1, canvas.clientHeight);
+    const dpr = Math.min(window.devicePixelRatio || 1, 2); // 3x phones: the full-screen character pass is the cost
+    const forced = Number(params.get('cell'));
+    const cssCell = forced >= 2 && forced <= 32 ? forced : Math.min(4, Math.max(3, Math.round(2.5 + w / 1000)));
+    renderer.setPixelRatio(dpr);
+    renderer.setSize(w, h, false);
+    renderer.getDrawingBufferSize(bufferSize);
+    const cell = Math.max(4, Math.round(cssCell * dpr));
+    const cols = Math.ceil(bufferSize.x / cell), rows = Math.ceil(bufferSize.y / cell);
+    Object.assign(L, { w, h, W: bufferSize.x, H: bufferSize.y, cols, rows, cell,
+      offX: Math.floor((cols * cell - bufferSize.x) / 2), offY: Math.floor((rows * cell - bufferSize.y) / 2) });
+    composer.setSize(cols * K, rows * K);
+    U.uGrid.value.set(cols, rows);
+    U.uOffset.value.set(L.offX, L.offY);
+    U.uTexel.value.set(0.25 / cols, 0.25 / rows); // taps a quarter cell from the centre: a box average for any K
+    if (U.uCell.value !== cell || !U.tGlyph.value) { U.tGlyph.value?.dispose(); U.tGlyph.value = glyphs(cell); }
+    U.uCell.value = cell;
+    if (pmndrs) { pmndrs.composer.setSize(w, h, false); pmndrs.fx.cellSize = cell; }
+    // same tunnel framing in both orientations: aim for ~44 deg across, within 50-78 deg vertically
+    const aspect = cols / rows;
+    camera.aspect = handCamera.aspect = aspect;
+    camera.fov = handCamera.fov = THREE.MathUtils.clamp(2 * Math.atan(Math.tan(22 * DEG) / aspect) / DEG, 50, 78);
+    camera.updateProjectionMatrix();
+    handCamera.updateProjectionMatrix();
+    placeHand();
+  }
+
+  function placeHand() { // keep the fist in the lower-left corner, inside the safe area, sized to the screen
+    const cs = getComputedStyle(safeProbe);
+    const insetL = parseFloat(cs.paddingLeft) || 0, insetB = parseFloat(cs.paddingBottom) || 0;
+    const { w, h } = L, portrait = w < h;
+    const tanV = Math.tan(camera.fov * DEG / 2), tanH = tanV * camera.aspect, d = 0.42;
+    const px = Math.min(h * 0.3, w * 0.4);                    // on-screen size of the fist + torch
+    hand.scale.setScalar((px / h) * 2 * d * tanV / 0.16);
+    const nx = -1 + 2 * (insetL + w * (portrait ? 0.26 : 0.2)) / w;
+    const ny = -1 + 2 * (insetB + h * (portrait ? 0.2 : 0.24)) / h;
+    hand.position.set(nx * tanH * d, ny * tanV * d, -d);
+  }
+
+  function glyphs(cell) {
+    const c = document.createElement('canvas');
+    c.width = cell * CHARS.length; c.height = cell;
+    const g = c.getContext('2d', { willReadFrequently: true });
+    g.fillStyle = '#fff'; g.textAlign = 'center'; g.textBaseline = 'middle';
+    g.font = `bold ${Math.round(cell * 1.15)}px Menlo, Consolas, "DejaVu Sans Mono", "Roboto Mono", "Courier New", monospace`;
+    // a 6-10 px glyph is only a few grey pixels, so order the slots by how much each one really covers
+    const order = [...CHARS].map((ch, i) => {
+      g.fillText(ch, (i + 0.5) * cell, cell * 0.54);
+      const d = g.getImageData(i * cell, 0, cell, cell).data;
+      let ink = 0;
+      for (let k = 3; k < d.length; k += 4) ink += d[k];
+      return { i, ink };
+    }).sort((a, b) => a.ink - b.ink);
+    const out = document.createElement('canvas');
+    out.width = c.width; out.height = cell;
+    order.forEach(({ i }, j) => out.getContext('2d').drawImage(c, i * cell, 0, cell, cell, j * cell, 0, cell, cell));
+    const t = new THREE.CanvasTexture(out);
+    t.minFilter = t.magFilter = THREE.NearestFilter;
+    t.generateMipmaps = false;
+    return t;
+  }
+
+  new ResizeObserver(() => layout()).observe(canvas);
+  layout();
+
+  // ---------- aiming ----------
+  const aim = new THREE.Vector2(0.08, -0.32), aimGoal = aim.clone();
+  const dir = new THREE.Vector3(), target = new THREE.Vector3(), local = new THREE.Vector3(), head = new THREE.Vector3();
+  let pressing = false, touched = false;
+  function aimAt(e) {
+    const r = canvas.getBoundingClientRect();
+    const fx = (e.clientX - r.left) / r.width, fy = 1 - (e.clientY - r.top) / r.height;
+    aimGoal.set(((fx * L.W + L.offX) / (L.cols * L.cell)) * 2 - 1, ((fy * L.H + L.offY) / (L.rows * L.cell)) * 2 - 1);
+  }
+  canvas.addEventListener('pointerdown', (e) => {
+    pressing = touched = true;
+    canvas.setPointerCapture(e.pointerId);
+    aimAt(e);
+    if (!msg.hidden) { msg.classList.add('off'); setTimeout(() => { msg.hidden = true; }, 1300); }
+  });
+  canvas.addEventListener('pointermove', (e) => { if (pressing) aimAt(e); });
+  const release = () => { pressing = false; };
+  canvas.addEventListener('pointerup', release);
+  canvas.addEventListener('pointercancel', release);
+  canvas.addEventListener('contextmenu', (e) => e.preventDefault());
+  document.addEventListener('gesturestart', (e) => e.preventDefault());
+  document.addEventListener('dblclick', (e) => e.preventDefault());
+
+  function hitTunnel(o, d) { // distance from o along unit d to the idealised tunnel surface
+    let t = 60;
+    if (d.y < -1e-4) t = Math.min(t, -o.y / d.y);
+    if (Math.abs(d.x) > 1e-4) {
+      const ts = ((d.x > 0 ? R : -R) - o.x) / d.x;
+      if (ts > 0 && o.y + d.y * ts <= HW) t = Math.min(t, ts);
+    }
+    const oy = o.y - HW, a = d.x * d.x + d.y * d.y;
+    if (a > 1e-8) {
+      const b = o.x * d.x + oy * d.y, c = o.x * o.x + oy * oy - R * R, disc = b * b - a * c;
+      if (disc >= 0) { const ta = (-b + Math.sqrt(disc)) / a; if (ta > 0 && o.y + d.y * ta >= HW) t = Math.min(t, ta); }
+    }
+    return t;
+  }
+
+  // ---------- loop (paused when hidden or scrolled out of an embedding page) ----------
+  let walked = 0, fade = 0, last = 0, raf = 0, running = false, visible = !document.hidden, onScreen = true;
+  function frame(now) {
+    raf = requestAnimationFrame(frame);
+    const dt = Math.min(0.1, (now - last) / 1000 || 0);
+    last = now;
+    const speed = reducedMotion.matches ? SPEED * 0.35 : SPEED;
+    walked += speed * dt;
+    camera.position.z = -walked;
+    if (BOB) {
+      const phase = walked / 0.75 * Math.PI * 2;
+      camera.position.y = EYE + Math.sin(phase) * 0.022;
+      camera.position.x = Math.sin(phase / 2) * 0.012;
+    }
+    for (const seg of segments) if (seg.z0 > camera.position.z + 1) { seg.z0 -= SEGS * SEG_L; buildSegment(seg); }
+    track.position.z = TRACK_P * Math.ceil(camera.position.z / TRACK_P);
+
+    aim.lerp(aimGoal, 1 - Math.exp(-dt / 0.08)); // ~0.25 s to settle
+    const tanV = Math.tan(camera.fov * DEG / 2);
+    dir.set(aim.x * tanV * camera.aspect, aim.y * tanV, -1).normalize();
+    target.copy(camera.position).addScaledVector(dir, hitTunnel(camera.position, dir));
+    local.copy(target).sub(camera.position);   // hand space = camera space (the camera never rotates)
+    hand.updateMatrixWorld();
+    torch.lookAt(local);
+    wristPos.copy(WRIST).applyQuaternion(torch.quaternion).sub(ELBOW);
+    forearm.position.copy(ELBOW);
+    forearm.scale.y = wristPos.length();
+    forearm.quaternion.setFromUnitVectors(UP, wristPos.normalize());
+    torch.updateMatrixWorld();
+    head.copy(HEAD).applyMatrix4(torch.matrixWorld).add(camera.position);
+    beam.position.copy(head); spill.position.copy(head); bounce.position.copy(camera.position);
+    beam.target.position.copy(target); spill.target.position.copy(target);
+
+    fade = Math.min(1, fade + dt / 1.4);
+    U.uFade.value = fade * fade;
+    (pmndrs ? pmndrs.composer : composer).render(dt);
+  }
+  function update() {
+    const go = visible && onScreen;
+    if (go && !running) { running = true; last = performance.now(); raf = requestAnimationFrame(frame); }
+    else if (!go && running) { running = false; cancelAnimationFrame(raf); }
+  }
+  document.addEventListener('visibilitychange', () => { visible = !document.hidden; update(); });
+  new IntersectionObserver(([e]) => { onScreen = e.isIntersecting; update(); }).observe(canvas);
+  update();
+  setTimeout(() => { if (!touched) msg.hidden = false; }, 1600);
+}
+</script>
+</body>
+</html>

@@ -9,6 +9,8 @@
 - ⬜ **換真作品內容**：`index.html` 三個區塊都標了 `TODO` 註解——把佔位文案/圖片換成賴晁翔本人的作品（見 `README.md`「怎麼放我的作品」節）。
 - ⬜（想更酷再上）進階打磨工具＝`README.md` §B 候選（評估後再採用）。
 - 部署方式／網址：待決定（README 技術棧節）。
+- 🏃 **`ascii-cave/`**（2026-11-07 放上，https://gassao1998.github.io/ascii-cave/ ）：ASCII 字元畫的鐵道隧道互動作品，原始碼在私人 repo `gassao1998/ascii-cave`，這裡只放網頁要用的 `index.html`、`preview.jpg`、`assets/`。
+  改版時從那個 repo 複製這三樣過來，不在這裡改。⬜ 要不要連進首頁、用卡片還是 iframe（嵌入寫法見 ascii-cave 的 README「放上 GitHub Pages」）。
 
 ## 指標
 - 現況/技術棧/怎麼換內容＝`README.md`；逐版＝`CHANGELOG.md`。
