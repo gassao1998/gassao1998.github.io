@@ -84,8 +84,8 @@ async function start() {
   // scene texels per cell side; by default 1 for the 3-4 px cells, which are nearly pixels already (README has the numbers)
   const K_FORCED = [1, 2, 3, 4].includes(Number(params.get('k'))) ? Number(params.get('k')) : 0;
   const CHARS = ' .:-=+*#%@';
-  // assets/graffiti/*.jpg, cropped by tools/crop_graffiti.py; the first three are placed specially
-  const GRAFFITI = ['cat-band', 'mural-sun', 'mural-dish', 'lilac', 'blue', 'bfd', 'code', 'yellow-e', 'love', 'fists',
+  // assets/graffiti/*.jpg, cropped by tools/crop_graffiti.py; the first four are placed specially
+  const GRAFFITI = ['cat-band', 'mural-sun', 'mural-dish', 'poster', 'lilac', 'blue', 'bfd', 'code', 'yellow-e', 'love', 'fists',
     'green', 'pillar', 'scam', 'mos-erevan', 'suka', 'gey', 'throw-green', 'green-saints', 'shutter',
     'tugan', 'underpass-l', 'underpass-cat', 'underpass-teal', 'underpass-lilac', 'make-love', 'protect-trans', 'portal-red',
     'portal-tags', 'orange', 'tasma', 'fuck-you', 'column', 'card', 'kiss', 'eyes'];
@@ -246,7 +246,7 @@ async function start() {
     name: e.name, aspect: e.img.width / e.img.height,
     u0: (e.x + 1) / AW, du: (e.img.width - 2) / AW, v0: 1 - (e.y + e.img.height - 1) / AH, dv: (e.img.height - 2) / AH,
   }));
-  const special = Object.fromEntries(['cat-band', 'mural-sun', 'mural-dish'].map((n) => [n, pieces.find((p) => p.name === n)]));
+  const special = Object.fromEntries(['cat-band', 'mural-sun', 'mural-dish', 'poster'].map((n) => [n, pieces.find((p) => p.name === n)]));
   const others = pieces.filter((p) => !Object.values(special).includes(p));
   const decalMat = new THREE.MeshStandardMaterial({
     map: atlas, vertexColors: true, transparent: true, depthWrite: false, roughness: 0.85,
@@ -333,8 +333,12 @@ async function start() {
   function placeGraffiti(seg) {
     seg.nv = seg.ni = 0;
     const n = slot(seg), top = seg.z0 + SEG_L - rand(0.05, 0.6);
-    const cat = special['cat-band'], sun = special['mural-sun'], dish = special['mural-dish'];
-    if (n % 4 === 1 && cat) { // every 48 m the cat lies across the arch; the walls under it stay bare
+    const cat = special['cat-band'], sun = special['mural-sun'], dish = special['mural-dish'], poster = special.poster;
+    if (n % CYCLE === TUNNEL_SLOTS - 1 && poster) { // the last stretch before the walkway: the tour poster from ROT-54,
+      const H = 1.7, L = H * poster.aspect, zc = seg.z0 + (SEG_L - L) / 2, y0 = 0.3; // person-sized, on the upright wall
+      addDecal(seg, 1, y0, y0 + H, zc, zc + L, poster, 1.1);
+      fill(seg, 1, zc + L + 0.5, top); fill(seg, 1, seg.z0 + 0.1, zc - 0.5); fill(seg, -1, seg.z0 + 0.1, top);
+    } else if (n % 4 === 1 && cat) { // every 48 m the cat lies across the arch; the walls under it stay bare
       const zc = seg.z0 + SEG_L / 2;
       addBand(seg, cat, zc - 2, zc + 2, 1.5);
       for (const side of [-1, 1]) { fill(seg, side, zc + 2.4, top); fill(seg, side, seg.z0 + 0.1, zc - 2.4); }
@@ -502,23 +506,32 @@ async function start() {
   const DISH_CY = RIM_Y + Math.sqrt(DISH.R ** 2 - DISH.r ** 2);
   const dishY = (r) => DISH_CY - Math.sqrt(DISH.R ** 2 - Math.min(r, DISH.r) ** 2);
   const smooth = THREE.MathUtils.smoothstep;
-  // the dish leans a few degrees down toward the far left as seen from the walkway (IMG_7383-7385: the far rim lower on
-  // the left, the hanging tower plumb). Bowl, rim and the three legs tip about the point where the walkway passes the
-  // rim, so nothing moves there; the tower only shifts with the joint it hangs from; the ground round the rim follows
-  const TILT_DEG = 6, TILT_P = new THREE.Vector3(DISH.x - DISH.r, RIM_Y, DISH.z), TILT_D = new THREE.Vector3(1, 0, -1).normalize();
+  // the dish leans 30 deg down toward the walkway, its mouth turned to you and the far rim raised, as the photos look
+  // into it (IMG_7383-7385; the hanging tower plumb). Bowl, rim and the three legs tip about the point where the
+  // walkway passes the rim, so nothing moves there; the tower only shifts with the joint it hangs from. On the dish's
+  // side of the walkway the ground follows the tipped rim's plane near the rim, so the raised far half is set into a
+  // hillside and no underside of the bowl shows
+  const TILT_DEG = 30, TILT_D = new THREE.Vector3(-1, 0, 0);
+  const TILT_P = new THREE.Vector3(DISH.x - DISH.r, RIM_Y, DISH.z);
   const TILT = new THREE.Matrix4().makeTranslation(TILT_P.x, TILT_P.y, TILT_P.z)
     .multiply(new THREE.Matrix4().makeRotationAxis(new THREE.Vector3(TILT_D.z, 0, -TILT_D.x), TILT_DEG * DEG)) // up x TILT_D
     .multiply(new THREE.Matrix4().makeTranslation(-TILT_P.x, -TILT_P.y, -TILT_P.z));
-  const tiltDrop = (x, z) => Math.sin(TILT_DEG * DEG) * (TILT_D.x * (x - TILT_P.x) + TILT_D.z * (z - TILT_P.z));
+  const tiltDrop = (x, z) => Math.tan(TILT_DEG * DEG) * (TILT_D.x * (x - TILT_P.x) + TILT_D.z * (z - TILT_P.z)); // tipped rim plane
+  const TILT_INV = TILT.clone().invert(), tv = new THREE.Vector3();
+  const DISH_O = new THREE.Vector3(DISH.x, DISH_CY, DISH.z).applyMatrix4(TILT); // centre of the bowl's sphere, tipped
   function groundY(x, z) {
     const n1 = simplex.noise(x / 22, z / 22), n2 = simplex.noise(x / 7 + 30, z / 7);
     // the low ground the walkway crosses: a valley under it, rising on the left, a level apron round the dish
     let h = -8 + Math.max(0, -x - 4) * 0.32 + Math.max(0, Math.abs(x) - 90) * 0.4 + n1 * 2.2 + n2 * 0.5;
-    const r = Math.hypot(x - DISH.x, z - DISH.z);
-    const drop = tiltDrop(x, z);
-    h += (RIM_Y - drop - 0.25 - h) * (1 - smooth(r, DISH.r + 5, DISH.r + 22));
-    if (r < DISH.r + 0.6) h = Math.min(h, dishY(r) - drop - 0.5);
-    if (Math.abs(x) < 4.6 && z < WALK_A + 1 && z > WALK_B - 1) h = Math.min(h, deckY(z) - 0.3); // never through the deck
+    const drop = tiltDrop(x, z), q = tv.set(x, RIM_Y - drop, z).applyMatrix4(TILT_INV); // the same spot on the untipped dish
+    const r = Math.hypot(q.x - DISH.x, q.z - DISH.z);
+    h += (RIM_Y - drop - 0.25 - h) * (1 - smooth(r, DISH.r + 3, DISH.r + 43)) * smooth(x, -6, 2);
+    const ox = x - DISH_O.x, oz = z - DISH_O.z, rr = DISH.R ** 2 - ox * ox - oz * oz;
+    if (rr > 0) { // under the tipped bowl: its surface straight above this spot, where that point is on the bowl
+      const yb = DISH_O.y - Math.sqrt(rr), b = tv.set(x, yb, z).applyMatrix4(TILT_INV);
+      if (Math.hypot(b.x - DISH.x, b.z - DISH.z) < DISH.r + 0.6) h = Math.min(h, yb - 1.5);
+    }
+    if (Math.abs(x) < 5.1 && z < WALK_A + 1 && z > WALK_B - 1) h = Math.min(h, deckY(z) - 0.3); // never through the deck
     // open, nearly level ground in front of each portal, at track height
     const open = Math.max(smooth(z, WALK_A - 6, WALK_A + 2), smooth(-z, -WALK_B - 6, -WALK_B + 2)) * (1 - smooth(Math.abs(x), 22, 40));
     h += (-0.15 + n2 * 0.08 - h) * open;
@@ -697,7 +710,7 @@ async function start() {
       }
     }, [1, 1]);
     const block = new THREE.Mesh(new THREE.BoxGeometry(11, 14, 30), new THREE.MeshStandardMaterial({ map: facade, roughness: 0.9 }));
-    block.position.set(DISH.x + DISH.r + 9, RIM_Y - 0.25 + 7, DISH.z + 22);
+    block.position.set(DISH.x + DISH.r + 9, groundY(DISH.x + DISH.r + 9, DISH.z + 22) + 5, DISH.z + 22); // footing sunk into the slope
     block.rotation.y = 0.35;
     outside.add(block);
   }
@@ -852,7 +865,7 @@ async function start() {
   // front of the camera, in its own scene, so the tunnel never hides it. Coordinates are the photo's pixels
   // (IMG_thumb_over, 3024 x 4032); the forearm runs on past its lower-left corner. The beam starts at the torch's front
   // end, under the thumb.
-  const HAND = { X0: -900, Y0: 1750, X1: 1950, Y1: 4900, FIST: [1560, 2500], FIST_W: 560, HEAD: [1652, 1830] };
+  const HAND = { X0: -3300, Y0: 1750, X1: 1950, Y1: 6000, FIST: [1560, 2500], FIST_W: 560, HEAD: [1652, 1830] };
   const handTex = await new THREE.TextureLoader().loadAsync('assets/hand/hand.png').catch(() => null); // none from file://
   if (handTex) handTex.colorSpace = THREE.SRGBColorSpace;
   const hand = new THREE.Group(), headLocal = new THREE.Vector3();
@@ -901,7 +914,8 @@ async function start() {
     const { w, h } = L, portrait = w < h;
     // fist about a tenth of the screen height, the size of the earlier 3D hand; the photo only sets its shape
     const s = (portrait ? Math.min(0.18 * w, 0.095 * h) : Math.min(0.1 * h, 0.07 * w)) / HAND.FIST_W; // CSS px per photo px
-    const fx = insetL + w * (portrait ? 0.5 : 0.44), fy = h * (portrait ? 0.76 : 0.72) - insetB;
+    // the fist sits a third of the visible forearm back from where it was (arm less outstretched), along the forearm
+    const fx = insetL + w * (portrait ? 0.34 : 0.37), fy = h * (portrait ? 0.81 : 0.81) - insetB;
     const left = fx - (HAND.FIST[0] - HAND.X0) * s, top = fy - (HAND.FIST[1] - HAND.Y0) * s;
     const tanV = Math.tan(handCamera.fov * DEG / 2), tanH = tanV * handCamera.aspect;
     const X = (px) => ((px / w) * 2 - 1) * tanH, Ypx = (py) => (1 - (py / h) * 2) * tanV; // screen -> plane at 1 m
@@ -1030,7 +1044,7 @@ async function start() {
     // at rest the view turns toward the feed tower while on the walkway (so a phone held upright sees it too)
     const byDish = zl < WALK_A + 4 && zl > DISH.z - 4;
     look.rest = byDish ? THREE.MathUtils.clamp(Math.atan2(-DISH.x, zl - DISH.z), -60 * DEG, 0) : 0;
-    look.restPitch = byDish ? -16 * DEG : PITCH_REST; // looking down into the bowl from the rim, as in the photos
+    look.restPitch = byDish ? 2 * DEG : PITCH_REST; // the tipped bowl below, the tower rising over it, as in the photos
     camera.position.y = EYE + lift + (BOB ? Math.sin(phase) * 0.022 : 0);
     cap.visible = !far.walk;
     cap.position.z = far.z0;
