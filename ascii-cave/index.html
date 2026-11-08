@@ -61,7 +61,6 @@ import { RenderPass } from 'three/addons/postprocessing/RenderPass.js';
 import { ShaderPass } from 'three/addons/postprocessing/ShaderPass.js';
 import { SimplexNoise } from 'three/addons/math/SimplexNoise.js';
 import { mergeGeometries } from 'three/addons/utils/BufferGeometryUtils.js';
-import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
 
 const canvas = document.getElementById('view');
 const msg = document.getElementById('msg');
@@ -606,7 +605,7 @@ async function start() {
     // hangs clear of the bowl. Three legs meet at the joint, 120 deg apart: two bowed white lattice legs landing on the
     // bowl, and a straight rusty box truss running down to the rim on the walkway's side
     const at = (r, a, y) => V(DISH.x + Math.cos(a) * r, y, DISH.z + Math.sin(a) * r);
-    const joint = RIM_Y + 1.5;
+    const joint = RIM_Y + 4.5, drumTop = RIM_Y - 3.5; // the drum hangs at the same height whatever the joint's
     const ring = (list, y, r, n, t) => { for (let k = 0; k < n; k++) beam(list, at(r, (k / n) * TAU, y), at(r, ((k + 1) / n) * TAU, y), t); };
     const column = (list, y0, y1, r0, r1, step, t) => { // hexagonal lattice column, radius r0 at y0 to r1 at y1
       const rad = (y) => r0 + (r1 - r0) * (y - y0) / (y1 - y0);
@@ -627,9 +626,9 @@ async function start() {
     ring(white, joint + 11.75, 2.05, 12, 0.18);
     white.push(new THREE.CylinderGeometry(0.25, 1.4, 1.2, 12).translate(DISH.x, joint + 14.1, DISH.z),   // cap
       new THREE.CylinderGeometry(0.12, 0.12, 1.6, 8).translate(DISH.x, joint + 15.5, DISH.z));          // mast
-    column(white, joint - 5, joint, 0.75, 0.95, 1.25, 0.11);                                          // lower section
-    white.push(new THREE.CylinderGeometry(1.1, 1.1, 1.8, 18).translate(DISH.x, joint - 5.9, DISH.z),     // drum
-      new THREE.CylinderGeometry(1.1, 1.45, 0.7, 18).translate(DISH.x, joint - 7.15, DISH.z));           // its flared foot
+    column(white, drumTop, joint, 0.75, 0.95, 1.25, 0.11);                                            // lower section
+    white.push(new THREE.CylinderGeometry(1.1, 1.1, 1.8, 18).translate(DISH.x, drumTop - 0.9, DISH.z),   // drum
+      new THREE.CylinderGeometry(1.1, 1.45, 0.7, 18).translate(DISH.x, drumTop - 2.15, DISH.z));         // its flared foot
     // the rusty leg lands on the rim on the walkway's side, where it comes in toward you along your line of sight as you
     // walk up and look across at the tower (as in the photos); the white legs at +-120 deg from it
     const aRust = Math.PI - 0.62;
@@ -646,8 +645,10 @@ async function start() {
         beam(list, pts[i][k], pts[i + 1][(k + 1) % 4], t * 0.4);                   // diagonal
       }
     };
-    for (const a of [aRust + TAU / 3, aRust - TAU / 3]) { // bowed white legs: out from the joint, then down onto the bowl
-      const hf = 11, yf = dishY(hf);
+    // bowed white legs: out from the joint, then down onto the bowl. A broad quarter ellipse, about 2.7 times as wide as
+    // it drops, the curve of the earlier rim-to-rim arches (27 m out for a 10 m rise); the feet land 22 m out
+    for (const a of [aRust + TAU / 3, aRust - TAU / 3]) {
+      const hf = 22, yf = dishY(hf);
       truss(white, (u) => { const w = u * Math.PI / 2; return at(1.7 + (hf - 1.7) * Math.sin(w), a, joint - (joint - yf) * (1 - Math.cos(w))); }, 22, 0.42, 0.13);
     }
     const foot = at(DISH.r + 0.2, aRust, RIM_Y + 0.4), top = at(1.7, aRust, joint);
@@ -826,158 +827,21 @@ async function start() {
   outScene.add(new THREE.HemisphereLight(0x33405e, 0x0b0907, 0.35), beam2, beam2.target, spill2, spill2.target);
   renderer.compile(outScene, camera); // no shader compile stall the first time a walkway comes into view
 
-  // ---------- hand holding the torch (drawn in its own scene, on top of everything) ----------
-  // A left hand at real size (metres) in camera space, posed like an FPS view model: forearm from off-screen lower
-  // left, the fist round the barrel in a diagonal power grip. Angles and proportions: docs/hand-anatomy.md.
-  const skin = new THREE.MeshStandardMaterial({ color: 0x3e2d25, roughness: 0.85 });
-  const metal = new THREE.MeshStandardMaterial({ color: 0x2b2d33, metalness: 0.3, roughness: 0.45 });
-  const chrome = new THREE.MeshStandardMaterial({ color: 0x8b9099, metalness: 0.9, roughness: 0.3 });
-  const hand = new THREE.Group();  // origin = centre of the grip, on the barrel axis
-  const torch = new THREE.Group(); // turns toward the target; +Z is the beam
-  hand.add(torch);
-  const part = (geo, mat, x, y, z) => { const m = new THREE.Mesh(geo, mat); m.position.set(x, y, z); torch.add(m); return m; };
-  const alongZ = (geo) => geo.rotateX(Math.PI / 2);
-  const grip = await gripArm(); // CC0 wrad-arms viewmodel rig, left arm posed round the barrel; null if it can't load
-  const RB = grip ? grip.radius : 0.016;
-  // a short EDC torch: the tail just shows below the little finger; the switch (green light) on top and the head
-  // stand out of the thumb web, in front of the thumb tip, as in the reference photo
-  const zIndex = grip ? grip.indexZ : 0.02, zPinky = grip ? grip.pinkyZ : -0.02, zThumb = grip ? grip.thumbZ : 0.03;
-  const zLed = Math.max(zIndex + 0.011, zThumb + 0.012), zTail = zPinky - 0.022, zHead = zLed + 0.012;
-  part(alongZ(new THREE.CylinderGeometry(RB, RB, zHead - zTail, 20)), metal, 0, 0, (zHead + zTail) / 2); // barrel
-  part(alongZ(new THREE.CylinderGeometry(RB + 0.007, RB, 0.03, 20)), metal, 0, 0, zHead + 0.015);         // head
-  part(new THREE.TorusGeometry(RB + 0.006, 0.003, 8, 24), chrome, 0, 0, zHead + 0.031);                  // bezel
-  part(new THREE.TorusGeometry(RB, 0.0025, 8, 24), chrome, 0, 0, zTail);                                  // tail ring
-  const led = part(new THREE.SphereGeometry(0.0055, 12, 8), new THREE.MeshBasicMaterial({ color: new THREE.Color(0.35, 4, 0.9) }),
-    0, RB + 0.003, zLed);
-  // arm held straight out: the forearm reaches the wrist from a reference elbow low on the left and behind,
-  // so it comes in foreshortened from the bottom-left corner; the upper arm continues on out of sight
-  const SHOULDER_AT = new THREE.Vector3(-0.45, -0.75, 0.75); // in hand space: low on the left, level with the eye
-  const Y = new THREE.Vector3(0, 1, 0), wristPos = new THREE.Vector3(), wristQ = new THREE.Quaternion();
-  const dirV = new THREE.Vector3(), handX = new THREE.Vector3(), zV = new THREE.Vector3(), basis = new THREE.Matrix4();
-
-  async function gripArm() {
-    const gltf = await new GLTFLoader().loadAsync('assets/models/arms.glb').catch(() => null);
-    if (!gltf) return null;
-    const S = 0.1;                                  // model units are decimetres
-    const B = (n) => gltf.scene.getObjectByName(THREE.PropertyBinding.sanitizeNodeName(n)); // 'wrist.l' loads as 'wristl'
-    let mesh = null;
-    gltf.scene.traverse((o) => { if (o.isSkinnedMesh) mesh = o; });
-    if (!mesh || !B('wrist.l')) return null;
-    mesh.material = skin;
-    mesh.frustumCulled = false;
-    B('shoulder.r').scale.setScalar(1e-4);         // only the left arm is used
-    gltf.scene.updateMatrixWorld(true);
-    const wrist = B('wrist.l');
-    const toWrist = wrist.matrixWorld.clone().invert();
-    const W = (b) => b.getWorldPosition(new THREE.Vector3()).applyMatrix4(toWrist); // position in wrist space
-    const FING = ['index', 'middle', 'ring', 'pinky'];
-    const knuckle = FING.map((f) => W(B(`finger_${f}1.l`)));
-    const radial = knuckle[0].clone().sub(knuckle[3]).normalize();   // little -> index side
-    const distal = knuckle[1].clone().normalize();                   // wrist -> middle knuckle
-    const palm = new THREE.Vector3().crossVectors(radial, distal).normalize();
-    if (palm.dot(W(B('finger_thumb1.l')).sub(knuckle[1])) < 0) palm.negate(); // palmar side = the thumb's side
-    const palmW = palm.clone().transformDirection(wrist.matrixWorld);
-    const turn = (bone, axisW, deg) => {          // rotate a bone about a world axis through its own origin
-      const pq = bone.parent.getWorldQuaternion(new THREE.Quaternion());
-      bone.quaternion.premultiply(pq.clone().invert().multiply(new THREE.Quaternion().setFromAxisAngle(axisW, deg * DEG)).multiply(pq));
-      bone.updateMatrixWorld(true);
-    };
-    // MP, PIP, DIP flexion (deg) for a 3 cm barrel, deeper toward the little finger in the diagonal grip
-    const ANG = { index: [50, 75, 40], middle: [58, 80, 45], ring: [62, 85, 45], pinky: [66, 85, 45] };
-    const fit = {};
-    for (const f of FING) {
-      const bones = [1, 2, 3].map((k) => B(`finger_${f}${k}.l`));
-      const dirW = bones[1].getWorldPosition(new THREE.Vector3()).sub(bones[0].getWorldPosition(new THREE.Vector3())).normalize();
-      const axisW = new THREE.Vector3().crossVectors(dirW, palmW).normalize();
-      bones.forEach((b, k) => turn(b, axisW, ANG[f][k]));
-      fit[f] = circumcircle(W(bones[0]), W(bones[1]), W(bones[2])); // the joint centres wrap the barrel
-    }
-    // barrel axis: diagonal across the palm, from the hypothenar heel out through the thumb web,
-    // 50 deg off the knuckle line toward the fingertips, through the middle of the curled fingers
-    const OBLIQUE = 50 * DEG;
-    const D = radial.clone().multiplyScalar(Math.cos(OBLIQUE)).addScaledVector(distal, Math.sin(OBLIQUE)).normalize();
-    const C = fit.middle.centre.clone().add(fit.ring.centre).multiplyScalar(0.5);
-    const meanR = (fit.index.radius + fit.middle.radius + fit.ring.radius + fit.pinky.radius) / 4;
-    const radius = THREE.MathUtils.clamp(meanR * S - 0.01, 0.012, 0.02);
-    // the thumb side of the fist, square to the barrel, and the palm side (= distal x radial for a left hand)
-    const up = radial.clone().addScaledVector(D, -radial.dot(D)).normalize();
-    const palmar = new THREE.Vector3().crossVectors(D, up);
-    // thumb along the top of the barrel, tip a little to the palm side and 3 cm past the index finger: swing it from
-    // the CMC toward that point, bend MP 20 and IP 18, then swing once more so the bent tip lands on it
-    const T = [1, 2, 3].map((k) => B(`finger_thumb${k}.l`));
-    const side = up.clone().multiplyScalar(0.92).addScaledVector(palmar, 0.38).normalize();
-    const indexAlong = fit.index.centre.clone().sub(C).dot(D), pinkyAlong = fit.pinky.centre.clone().sub(C).dot(D);
-    const goal = C.clone().addScaledVector(D, indexAlong + 0.08)
-      .addScaledVector(side, radius / S + 0.08).applyMatrix4(wrist.matrixWorld);
-    const tipNow = () => new THREE.Vector3(0, 0.28, 0).applyMatrix4(T[2].matrixWorld);
-    const swing = (target) => {
-      const base = T[0].getWorldPosition(new THREE.Vector3());
-      const u = tipNow().sub(base).normalize(), v = target.clone().sub(base).normalize();
-      if (u.angleTo(v) > 1e-4) turn(T[0], new THREE.Vector3().crossVectors(u, v).normalize(), u.angleTo(v) / DEG);
-    };
-    swing(goal);
-    const towardAxis = side.clone().negate().transformDirection(wrist.matrixWorld);
-    const tDir = T[2].getWorldPosition(new THREE.Vector3()).sub(T[1].getWorldPosition(new THREE.Vector3())).normalize();
-    const tAxis = new THREE.Vector3().crossVectors(tDir, towardAxis).normalize();
-    turn(T[1], tAxis, 30); // MP and IP bent a little more than the everyday 21 / 18 deg: the thumb presses on the barrel
-    turn(T[2], tAxis, 25);
-    // the bent thumb reaches a fixed distance from its base: find where that distance meets the line along the top
-    // of the barrel, and swing the tip onto it, so the thumb rests on the barrel instead of passing through it
-    {
-      const base = T[0].getWorldPosition(new THREE.Vector3()), reach = tipNow().distanceTo(base);
-      const lineAt = (t) => C.clone().addScaledVector(side, radius / S + 0.08).addScaledVector(D, t).applyMatrix4(wrist.matrixWorld);
-      let t = indexAlong + 0.08;
-      for (let k = 0; k < 40 && lineAt(t).distanceTo(base) < reach; k++) t += 0.05;  // walk forward until in reach
-      for (let k = 0; k < 20; k++) t -= (lineAt(t).distanceTo(base) - reach) * 0.8;  // then settle on it
-      swing(lineAt(t));
-    }
-    // wrist frame -> torch space: a sword grip on a neutral (handshake) forearm. Barrel axis -> +Z (toward the target),
-    // the thumb side of the fist square to it -> up, which leaves the palm facing the middle of the screen (torch -X)
-    // and the knuckles pointing forward and down round the barrel; the barrel leaves the fist through the thumb web
-    const m0 = new THREE.Matrix4().makeBasis(D, up, palmar);
-    const m1 = new THREE.Matrix4().makeBasis(new THREE.Vector3(0, 0, 1), new THREE.Vector3(0, 1, 0), new THREE.Vector3(-1, 0, 0));
-    const q = new THREE.Quaternion().setFromRotationMatrix(m1.multiply(m0.transpose()));
-    // the forearm's axis seen from the hand (docs/hand-anatomy.md): wrist ulnar-deviated so the beam runs out along the
-    // reaching arm, as in the reference photo (beam about 15 deg above the forearm), and a little extended
-    const ulnar = 35 * DEG, extension = 3 * DEG;
-    const foreAxis = distal.clone().multiplyScalar(Math.cos(ulnar)).addScaledVector(radial, Math.sin(ulnar)).normalize()
-      .multiplyScalar(Math.cos(extension)).addScaledVector(palmar, Math.sin(extension)).normalize(); // elbow -> wrist
-    const thumbTip = new THREE.Vector3(0, 0.28, 0).applyMatrix4(T[2].matrixWorld).applyMatrix4(toWrist).sub(C).applyQuaternion(q);
-    // the forearm, upper arm and shoulder bones are driven directly in hand space every frame
-    const fore = B('forearm.l'), bicep = B('bicep.l'), shoulder = B('shoulder.l');
-    const lenF = wrist.position.length() * S, lenB = fore.position.length() * S, lenS = bicep.position.length() * S;
-    for (const b of [fore, bicep, shoulder]) { hand.add(b); b.scale.setScalar(S); }
-    hand.add(gltf.scene);
-    return { radius, q, centre: C.clone().multiplyScalar(S), foreAxis, indexZ: indexAlong * S, pinkyZ: pinkyAlong * S, thumbZ: thumbTip.z * S,
-      wrist, fore, bicep, shoulder, lenF, lenB, lenS };
-  }
-
-  function circumcircle(a, b, c) { // centre and radius of the circle through three points
-    const ab = b.clone().sub(a), ac = c.clone().sub(a), n = new THREE.Vector3().crossVectors(ab, ac);
-    const t = new THREE.Vector3().crossVectors(n, ab).multiplyScalar(ac.lengthSq())
-      .add(new THREE.Vector3().crossVectors(ac, n).multiplyScalar(ab.lengthSq())).divideScalar(2 * n.lengthSq());
-    return { centre: a.clone().add(t), radius: t.length() };
-  }
-  const glow = new THREE.Sprite(new THREE.SpriteMaterial({
-    map: (() => {
-      const c = document.createElement('canvas'); c.width = c.height = 64;
-      const g = c.getContext('2d'), gr = g.createRadialGradient(32, 32, 0, 32, 32, 32);
-      gr.addColorStop(0, 'rgba(120,255,150,1)'); gr.addColorStop(0.35, 'rgba(60,255,110,0.35)'); gr.addColorStop(1, 'rgba(0,255,80,0)');
-      g.fillStyle = gr; g.fillRect(0, 0, 64, 64);
-      return new THREE.CanvasTexture(c);
-    })(),
-    color: new THREE.Color(1, 1.8, 1.1), blending: THREE.AdditiveBlending, depthWrite: false,
-  }));
-  glow.scale.setScalar(0.022);
-  glow.position.copy(led.position);
-  torch.add(glow);
+  // ---------- hand holding the torch: the left hand cut out of a photo of the grip, seen from behind the way the eye
+  // sees it (left forearm in from the lower left, back of the hand up, the knuckles of the four curled fingers in a
+  // column, the thumb along the top of the barrel toward the head). The photo's tones are flattened to five levels,
+  // darkened and cooled for the tunnel, and outlined; the torch head is painted on. tools/trace_hand.py makes the PNG,
+  // transparent everywhere outside the hand. It sits on a plane in front of the camera, in its own scene, so the
+  // tunnel never hides it. Coordinates are the photo's pixels (3024 x 4032); the forearm runs on past its lower-left corner.
+  const HAND = { X0: -700, Y0: 2380, X1: 1700, Y1: 4600, FIST: [1400, 2760], FIST_W: 270, HEAD: [1495, 2450] };
+  const handTex = await new THREE.TextureLoader().loadAsync('assets/hand/hand.png').catch(() => null); // none from file://
+  if (handTex) handTex.colorSpace = THREE.SRGBColorSpace;
+  const hand = new THREE.Group(), headLocal = new THREE.Vector3();
+  const handPlane = new THREE.Mesh(new THREE.PlaneGeometry(1, 1),
+    new THREE.MeshBasicMaterial({ map: handTex, transparent: true, depthTest: false, depthWrite: false, visible: !!handTex }));
+  hand.add(handPlane);
   handScene.add(hand);
-  // nearly black, like the silhouette in the reference video; light from down the tunnel leaves a thin rim
-  handScene.add(new THREE.HemisphereLight(0x8c96b0, 0x0d0b09, 0.06));
-  const key = new THREE.DirectionalLight(0xfff0dc, 0.1); key.position.set(0.6, 1.2, 0.8);
-  const rim = new THREE.DirectionalLight(0xfff0dc, 1.1); rim.position.set(0.5, 0.9, -1);
-  handScene.add(key, rim);
-  const HEAD = new THREE.Vector3(0, 0, zHead + 0.033); // lens, in torch space
+
 
   // ---------- layout (resize, rotation, iframe resize) ----------
   const L = { W: 1, H: 1, cols: 1, rows: 1, cell: 8, offX: 0, offY: 0, w: 1, h: 1 };
@@ -1012,16 +876,21 @@ async function start() {
     placeHand();
   }
 
-  function placeHand() { // keep the fist in the lower-left corner, inside the safe area, sized to the screen
+  function placeHand() { // the fist low and a little left of centre, inside the safe area; the forearm runs off the corner
     const cs = getComputedStyle(safeProbe);
     const insetL = parseFloat(cs.paddingLeft) || 0, insetB = parseFloat(cs.paddingBottom) || 0;
     const { w, h } = L, portrait = w < h;
-    const tanV = Math.tan(handCamera.fov * DEG / 2), tanH = tanV * handCamera.aspect, d = 0.42;
-    const px = portrait ? Math.min(h * 0.26, w * 0.44) : Math.min(h * 0.32, w * 0.3); // on-screen size of fist + torch
-    hand.scale.setScalar((px / h) * 2 * d * tanV / 0.16);
-    const nx = -1 + 2 * (insetL + w * (portrait ? 0.4 : 0.36)) / w; // low, a little left of centre
-    const ny = -1 + 2 * (insetB + h * (portrait ? 0.22 : 0.2)) / h;
-    hand.position.set(nx * tanH * d, ny * tanV * d, -d);
+    const s = (portrait ? Math.min(0.3 * w, 0.16 * h) : Math.min(0.17 * h, 0.12 * w)) / HAND.FIST_W; // CSS px per photo px
+    const fx = insetL + w * (portrait ? 0.48 : 0.42), fy = h * (portrait ? 0.72 : 0.68) - insetB;
+    const left = fx - (HAND.FIST[0] - HAND.X0) * s, top = fy - (HAND.FIST[1] - HAND.Y0) * s;
+    const tanV = Math.tan(handCamera.fov * DEG / 2), tanH = tanV * handCamera.aspect;
+    const X = (px) => ((px / w) * 2 - 1) * tanH, Ypx = (py) => (1 - (py / h) * 2) * tanV; // screen -> plane at 1 m
+    const x0 = X(left), x1 = X(left + (HAND.X1 - HAND.X0) * s), y0 = Ypx(top), y1 = Ypx(top + (HAND.Y1 - HAND.Y0) * s);
+    handPlane.scale.set(x1 - x0, y0 - y1, 1);
+    handPlane.position.set((x0 + x1) / 2, (y0 + y1) / 2, -1);
+    // the beam starts at the torch head in the drawing, half a metre in front of the eye
+    const hx = X(left + (HAND.HEAD[0] - HAND.X0) * s), hy = Ypx(top + (HAND.HEAD[1] - HAND.Y0) * s);
+    headLocal.set(hx * 0.5, hy * 0.5, -0.5);
   }
 
   // At 3-4 device px a font glyph is a grey smudge, so small cells get hand-drawn 3x3 pixel forms of the same ten
@@ -1064,8 +933,7 @@ async function start() {
   // The walk itself always follows the tunnel. After a few idle seconds the view drifts back to rest.
   const YAW_MAX = 75 * DEG, PITCH_MIN = -35 * DEG, PITCH_MAX = 45 * DEG, PITCH_REST = -8 * DEG;
   const look = { yaw: 0, pitch: PITCH_REST, yawGoal: 0, pitchGoal: PITCH_REST, idle: 99, rest: 0, restPitch: PITCH_REST };
-  const dir = new THREE.Vector3(), target = new THREE.Vector3(), local = new THREE.Vector3(), head = new THREE.Vector3();
-  const qInv = new THREE.Quaternion();
+  const dir = new THREE.Vector3(), target = new THREE.Vector3(), head = new THREE.Vector3();
   let pressing = false, touched = false, lastX = 0, lastY = 0;
   const clampLook = () => {
     look.yawGoal = THREE.MathUtils.clamp(look.yawGoal, -YAW_MAX, YAW_MAX);
@@ -1163,31 +1031,8 @@ async function start() {
     hand.rotation.y = THREE.MathUtils.clamp((look.yaw - prevYaw) / Math.max(dt, 1e-3) * -0.05, -0.12, 0.12);
     dir.set(0, 0, -1).applyQuaternion(camera.quaternion); // the beam lands where the view is centred
     target.copy(camera.position).addScaledVector(dir, hitTunnel(camera.position, dir));
-    local.copy(target).sub(camera.position).applyQuaternion(qInv.copy(camera.quaternion).invert()); // into hand space
     hand.updateMatrixWorld();
-    // the torch model is held tipped up 10 deg and out 4 deg, as in the reference photo, so the forearm rises into the
-    // fist from the lower left; the light itself still runs from the head to the target at the centre of the view
-    const reach = local.length();
-    torch.lookAt(local.x + reach * 0.07, local.y + reach * 0.18, local.z);
-    if (grip) {
-      // hand and forearm move as one piece with the upright torch: the hand's pose in the torch is fixed (neutral
-      // forearm, palm to the right, thumb up), the forearm leaves the wrist along foreAxis, the wrist bone takes the
-      // small deviation between them, and the upper arm reaches back to a shoulder out of sight on the lower left
-      wristQ.copy(torch.quaternion).multiply(grip.q);
-      wristPos.copy(grip.centre).applyQuaternion(wristQ).negate();
-      dirV.copy(grip.foreAxis).applyQuaternion(wristQ);                        // elbow -> wrist
-      handX.set(0, 1, 0).applyQuaternion(wristQ);                              // the wrist bone's own axis
-      grip.fore.quaternion.setFromUnitVectors(handX, dirV).multiply(wristQ);   // no twist between hand and forearm
-      grip.fore.position.copy(wristPos).addScaledVector(dirV, -grip.lenF);
-      grip.wrist.quaternion.copy(grip.fore.quaternion).invert().multiply(wristQ);
-      zV.copy(grip.fore.position).sub(SHOULDER_AT).normalize();               // shoulder -> elbow
-      grip.bicep.quaternion.setFromUnitVectors(Y, zV);
-      grip.bicep.position.copy(grip.fore.position).addScaledVector(zV, -grip.lenB);
-      grip.shoulder.quaternion.copy(grip.bicep.quaternion);
-      grip.shoulder.position.copy(grip.bicep.position).addScaledVector(zV, -grip.lenS);
-    }
-    torch.updateMatrixWorld();
-    head.copy(HEAD).applyMatrix4(torch.matrixWorld).applyQuaternion(camera.quaternion).add(camera.position);
+    head.copy(headLocal).applyMatrix4(hand.matrixWorld).applyQuaternion(camera.quaternion).add(camera.position); // torch head
     beam.position.copy(head); spill.position.copy(head); bounce.position.copy(camera.position);
     beam.target.position.copy(target); spill.target.position.copy(target);
     beam2.position.copy(head); spill2.position.copy(head); beam2.target.position.copy(target); spill2.target.position.copy(target);
