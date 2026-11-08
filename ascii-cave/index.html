@@ -35,6 +35,15 @@
   }
   #msg.off { opacity: 0; }
   #msg.err { color: var(--text); }
+  #gyro {
+    position: fixed; z-index: 1; width: 34px; height: 34px; padding: 0; border-radius: 50%;
+    top: calc(env(safe-area-inset-top, 0px) + 10px); right: calc(env(safe-area-inset-right, 0px) + 10px);
+    border: 1px solid rgba(232, 226, 210, 0.18); background: rgba(0, 0, 0, 0.35); color: var(--hint);
+    display: grid; place-items: center; touch-action: manipulation;
+  }
+  #gyro[hidden] { display: none; }
+  #gyro[aria-pressed="false"] { opacity: 0.45; }
+  #gyro svg { width: 18px; height: 18px; }
   #safe {
     position: fixed; visibility: hidden; pointer-events: none;
     padding: env(safe-area-inset-top, 0px) env(safe-area-inset-right, 0px) env(safe-area-inset-bottom, 0px) env(safe-area-inset-left, 0px);
@@ -53,6 +62,11 @@
 <body>
 <canvas id="view" role="img" aria-label="ASCII 字元畫的鐵道隧道，手電筒一直往前照，點擊或觸控畫面可以改變光照的方向"></canvas>
 <p id="msg" hidden>點畫面照亮</p>
+<button id="gyro" type="button" hidden aria-pressed="true" aria-label="轉動手機看四周：點一下關掉，再點一下從現在的方向重新對準">
+  <svg viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" aria-hidden="true">
+    <rect x="7" y="4" width="6" height="12" rx="1.2"/><path d="M3.5 7.5a7 7 0 0 0 0 5M16.5 7.5a7 7 0 0 1 0 5"/>
+  </svg>
+</button>
 <div id="safe"></div>
 <script type="module">
 import * as THREE from 'three';
@@ -79,7 +93,8 @@ async function start() {
   // ---------- constants ----------
   const R = 2.3, HW = 2.0, S = 2 * HW + Math.PI * R;   // tunnel half width, wall height, profile length
   const NS = 72, DS = S / NS;                          // samples around the arch
-  const DZ = 0.25, SEG_L = 12, NZ = SEG_L / DZ, SEGS = 7; // segment layout: one 12 m segment behind, six ahead
+  // segment layout: three 12 m segments behind (so turning round still finds walls), six ahead
+  const DZ = 0.25, SEG_L = 12, NZ = SEG_L / DZ, BEHIND = 3, SEGS = BEHIND + 6;
   const EYE = 1.6, SPEED = 1.15;                       // eye height, walk speed (m/s)
   // scene texels per cell side; by default 1 for the 3-4 px cells, which are nearly pixels already (README has the numbers)
   const K_FORCED = [1, 2, 3, 4].includes(Number(params.get('k'))) ? Number(params.get('k')) : 0;
@@ -264,6 +279,9 @@ async function start() {
   const TUNNEL_SLOTS = 13, WALK_SLOTS = 10, CYCLE = TUNNEL_SLOTS + WALK_SLOTS;
   const isWalk = (n) => n % CYCLE >= TUNNEL_SLOTS;
   const isGround = (n) => n % CYCLE === TUNNEL_SLOTS || n % CYCLE === CYCLE - 1;
+  // the carpet stretch: slots 7-8 of each cycle (84-108 m in), where no cat, mural or poster falls in the first cycle
+  const CARPET_SLOT = 7, CARPET_LEN = 2 * SEG_L;
+  const isCarpet = (n) => { const m = ((n % CYCLE) + CYCLE) % CYCLE; return m >= CARPET_SLOT && m < CARPET_SLOT + CARPET_LEN / SEG_L; };
   const zoneExit = (k) => 4 - SEG_L * (TUNNEL_SLOTS + CYCLE * k); // z where the k-th walkway leaves the tunnel
   let bag = [];
   const rand = (a, b) => a + Math.random() * (b - a);
@@ -282,7 +300,7 @@ async function start() {
     }
     decal.setIndex(new THREE.BufferAttribute(new Uint16Array(DECAL_INDEX), 1).setUsage(THREE.DynamicDrawUsage));
     const seg = {
-      z0: Z_FIRST - (k - 1) * SEG_L, P: new Float32Array(GW * GH * 3), N: new Float32Array(GW * GH * 3),
+      z0: Z_FIRST - (k - BEHIND) * SEG_L, P: new Float32Array(GW * GH * 3), N: new Float32Array(GW * GH * 3),
       wall: new THREE.Mesh(wall, wallMat), decal: new THREE.Mesh(decal, decalMat), nv: 0, ni: 0,
     };
     seg.wall.frustumCulled = seg.decal.frustumCulled = false; // rebuilt in place, bounds would go stale
@@ -337,7 +355,8 @@ async function start() {
     seg.nv = seg.ni = 0;
     const n = slot(seg), top = seg.z0 + SEG_L - rand(0.05, 0.6);
     const cat = special['cat-band'], sun = special['mural-sun'], dish = special['mural-dish'], poster = special.poster;
-    if (PIN && n === Math.floor(START / SEG_L)) { // ?pin=name: that piece on the right wall a few metres ahead (checks)
+    if (isCarpet(n)) { // the rugs cover these walls: no graffiti, and the cat or a mural waits for another stretch
+    } else if (PIN && n === Math.floor(START / SEG_L)) { // ?pin=name: that piece on the right wall a few metres ahead (checks)
       const H = 1.5, L = H * PIN.aspect, zc = seg.z0 + (SEG_L - L) / 2 - 2;
       addDecal(seg, 1, 0.4, 0.4 + H, zc, zc + L, PIN, 1.2);
       fill(seg, 1, zc + L + 0.4, top); fill(seg, 1, seg.z0 + 0.1, zc - 0.4); fill(seg, -1, seg.z0 + 0.1, top);
@@ -502,6 +521,89 @@ async function start() {
   // black lid on the far end of the built tunnel, so the outdoors never shows through where the walls stop
   const cap = new THREE.Mesh(new THREE.PlaneGeometry(16, 12).translate(0, 4, 0), new THREE.MeshBasicMaterial({ color: 0 }));
   scene.add(cap);
+
+  // ---------- the carpet stretch: two segments of every cycle lined with Armenian rugs (carpets/IMG_6744, IMG_7326) ----------
+  // Rugs hang on both walls, sagging, some crooked or with a corner come loose, and lie in heaps along them: folded
+  // stacks, flattened rolls, one slid down and spread on the floor. The pictures are rugs cropped off photos and aged
+  // (tools/crop_graffiti.py, rug-*); one material and one draw call for the lot; only the torch lights them.
+  const carpets = await (async () => {
+    const imgs = (await Promise.all(['horses', 'crosses', 'diamonds', 'medallion'].map(async (n) => {
+      const img = new Image();
+      img.crossOrigin = 'anonymous';
+      img.src = `assets/graffiti/rug-${n}.jpg`;
+      try { await img.decode(); return img; } catch { return null; }
+    }))).filter(Boolean);
+    if (!imgs.length) return null;
+    const c = document.createElement('canvas');
+    c.width = imgs.reduce((s, i) => s + i.width, 0); c.height = Math.max(...imgs.map((i) => i.height));
+    let ax = 0;
+    const rugs = imgs.map((img) => {
+      c.getContext('2d').drawImage(img, ax, 0);
+      const r = { u0: ax / c.width, du: img.width / c.width, v0: 1 - img.height / c.height, dv: img.height / c.height, aspect: img.width / img.height };
+      ax += img.width;
+      return r;
+    });
+    const tex = new THREE.CanvasTexture(c);
+    tex.colorSpace = THREE.SRGBColorSpace; tex.anisotropy = 4;
+    let seed = 6744; // the same layout every time
+    const rnd = (a, b) => { seed = (seed * 16807) % 2147483647; return a + (seed / 2147483647) * (b - a); };
+    const pick = () => rugs[Math.floor(rnd(0, rugs.length))];
+    const fitUV = (geo, r, part = 1) => { // into one rug's rect of the atlas (part < 1: a random piece of it)
+      const uv = geo.attributes.uv, du = r.du * part, dv = r.dv * part, u0 = r.u0 + rnd(0, r.du - du), v0 = r.v0 + rnd(0, r.dv - dv);
+      for (let i = 0; i < uv.count; i++) uv.setXY(i, u0 + uv.getX(i) * du, v0 + uv.getY(i) * dv);
+      return geo;
+    };
+    const parts = [];
+    for (const side of [-1, 1]) {
+      for (let z = -0.5, k = 0; z > -CARPET_LEN + 1.2; k++) { // hanging on the wall, side by side, a little overlapped
+        const r = pick(), h = rnd(1.3, 1.8), w = h * r.aspect, top = rnd(1.95, 2.15), loose = rnd(0, 1) < 0.3;
+        const g = fitUV(new THREE.PlaneGeometry(w, h, 6, 8), r), p = g.attributes.position;
+        for (let i = 0; i < p.count; i++) {
+          const u = p.getX(i) / w + 0.5, v = p.getY(i) / h + 0.5; // 0..1 across, bottom to top
+          let dy = 0, dz = 0.07 * (1 - v) ** 2 * (1 - (2 * u - 1) ** 2); // the lower middle bellies out from the wall
+          if (loose) { const t = Math.max(0, (u - 0.55) / 0.45) * Math.max(0, (v - 0.4) / 0.6); dy -= t * t * 0.4 * h; dz += t * 0.3; }
+          p.setY(i, p.getY(i) + dy); p.setZ(i, dz);
+        }
+        g.rotateZ(rnd(-0.07, 0.07)).rotateY(-side * Math.PI / 2).translate(side * (R - 0.05 - (k % 2) * 0.03), top - h / 2, z - w / 2);
+        g.computeVertexNormals();
+        parts.push(g);
+        z -= w + rnd(-0.15, 0.3);
+      }
+      for (let z = -0.8; z > -CARPET_LEN + 1; ) { // heaped along the foot of the wall
+        const r = pick(), kind = rnd(0, 1), x = side * rnd(1.35, 1.8);
+        if (kind < 0.45) { // a stack of folded rugs
+          let y = 0;
+          const n = Math.floor(rnd(3, 8)), len = rnd(0.9, 1.3);
+          for (let i = 0; i < n; i++) {
+            const t = rnd(0.07, 0.12);
+            parts.push(fitUV(new THREE.BoxGeometry(rnd(0.5, 0.75), t, len * rnd(0.9, 1.05)), pick(), 0.4)
+              .rotateY(rnd(-0.18, 0.18)).translate(x + rnd(-0.05, 0.05), y + t / 2, z - len / 2));
+            y += t;
+          }
+          z -= len + rnd(0.2, 0.6);
+        } else if (kind < 0.85) { // rolled up and squashed flat by its own weight
+          const rad = rnd(0.11, 0.18), len = rnd(1.1, 1.9);
+          parts.push(fitUV(new THREE.CylinderGeometry(rad, rad, len, 14, 1), r).rotateX(Math.PI / 2).scale(1, 0.75, 1)
+            .rotateY(rnd(-0.25, 0.25)).translate(x, rad * 0.75, z - len / 2));
+          z -= rnd(0.3, 0.8);
+        } else { // fallen off the wall and spread across the floor, still leaning on it at the back
+          const w = 1.2, len = w / r.aspect, g = fitUV(new THREE.PlaneGeometry(w, len, 6, 8), r), p = g.attributes.position;
+          for (let i = 0; i < p.count; i++) {
+            const u = p.getX(i) / w + 0.5;
+            p.setZ(i, 0.04 * Math.sin(p.getY(i) * 5 + u * 3) + (side > 0 ? u : 1 - u) ** 3 * 0.45);
+          }
+          g.rotateX(-Math.PI / 2).translate(side * (R - 0.75), 0.02, z - len / 2);
+          g.computeVertexNormals();
+          parts.push(g);
+          z -= len + rnd(0.2, 0.5);
+        }
+      }
+    }
+    const mesh = new THREE.Mesh(mergeGeometries(parts), new THREE.MeshStandardMaterial({ map: tex, roughness: 0.95, side: THREE.DoubleSide }));
+    mesh.frustumCulled = false; // it is moved along with the cycle
+    scene.add(mesh);
+    return mesh;
+  })();
 
   // ---------- outside: the ROT-54 walkway (docs/rot54-reference.md); local z = 0 is the tunnel exit ----------
   const WALK_L = WALK_SLOTS * SEG_L, GROUND_L = SEG_L, RIM_Y = -1.6, DISH = { x: 28.5, z: -60, r: 27, R: 48 };
@@ -971,39 +1073,83 @@ async function start() {
 
   // ---------- looking: tap turns the view (and the torch with it) toward that point, drag keeps turning ----------
   // Like a first-person game: the camera turns, the hand stays where it is on screen and the beam lands mid-screen.
-  // The walk itself always follows the tunnel. After a few idle seconds the view drifts back to rest.
-  const YAW_MAX = 75 * DEG, PITCH_MIN = -35 * DEG, PITCH_MAX = 45 * DEG, PITCH_REST = -8 * DEG;
+  // The walk itself always follows the tunnel. Left and right go all the way round; up and down are limited. After a
+  // few idle seconds the view drifts back to rest, the short way round.
+  const PITCH_MIN = -35 * DEG, PITCH_MAX = 45 * DEG, PITCH_REST = -8 * DEG;
   const look = { yaw: 0, pitch: PITCH_REST, yawGoal: 0, pitchGoal: PITCH_REST, idle: 99, rest: 0, restPitch: PITCH_REST };
   const dir = new THREE.Vector3(), target = new THREE.Vector3(), head = new THREE.Vector3();
-  let pressing = false, touched = false, lastX = 0, lastY = 0;
-  const clampLook = () => {
-    look.yawGoal = THREE.MathUtils.clamp(look.yawGoal, -YAW_MAX, YAW_MAX);
-    look.pitchGoal = THREE.MathUtils.clamp(look.pitchGoal, PITCH_MIN, PITCH_MAX);
-  };
+  const wrapAngle = (a) => a - Math.round(a / TAU) * TAU; // to -180..180 deg, for the short way round
+  let pressing = false, touched = false, lastX = 0, lastY = 0, msgTimer = 0;
+  const clampLook = () => { look.pitchGoal = THREE.MathUtils.clamp(look.pitchGoal, PITCH_MIN, PITCH_MAX); };
+  function showMsg(text) { // one line in the hint's place, fading out after a while
+    msg.textContent = text; msg.hidden = false; msg.classList.remove('off');
+    clearTimeout(msgTimer);
+    msgTimer = setTimeout(() => { msg.classList.add('off'); msgTimer = setTimeout(() => { msg.hidden = true; }, 1300); }, 3000);
+  }
+
+  // phones and tablets: turning the device turns the view (DeviceOrientation). The first touch asks for the sensor
+  // (iOS only lets a page ask from inside a tap); the device's direction at its first reading stands for the view as
+  // it is then. While it runs the view does not drift back to rest, and taps and drags add to it. The corner button
+  // turns it off, and on again from wherever the device points then.
+  const gyro = { on: false, asked: false, base: null, prev: 0, yaw: 0, pitch: 0, addYaw: 0, addPitch: 0 };
+  const gyroBtn = document.getElementById('gyro');
+  const qDev = new THREE.Quaternion(), qScreen = new THREE.Quaternion(), eDev = new THREE.Euler(), fwd = new THREE.Vector3();
+  const Q_BACK = new THREE.Quaternion(-Math.SQRT1_2, 0, 0, Math.SQRT1_2), Z_AXIS = new THREE.Vector3(0, 0, 1);
+  function onOrient(e) {
+    if (!gyro.on || e.alpha == null || e.beta == null) return;
+    const screenAngle = (screen.orientation ? screen.orientation.angle : window.orientation || 0) * DEG; // portrait or landscape
+    eDev.set(e.beta * DEG, e.alpha * DEG, -(e.gamma || 0) * DEG, 'YXZ'); // the device in the world
+    qDev.setFromEuler(eDev).multiply(Q_BACK).multiply(qScreen.setFromAxisAngle(Z_AXIS, -screenAngle)); // a camera behind the screen
+    fwd.set(0, 0, -1).applyQuaternion(qDev);
+    const yaw = Math.atan2(-fwd.x, -fwd.z), pitch = Math.asin(THREE.MathUtils.clamp(fwd.y, -1, 1));
+    if (!gyro.base) {
+      gyro.base = pitch - look.pitch; gyro.prev = yaw; gyro.yaw = look.yaw; gyro.addYaw = gyro.addPitch = 0;
+      gyroBtn.hidden = false; gyroBtn.setAttribute('aria-pressed', 'true');
+      showMsg('轉動手機看四周');
+    }
+    gyro.yaw += wrapAngle(yaw - gyro.prev); gyro.prev = yaw; // unwrapped, so turning round keeps going
+    gyro.pitch = pitch - gyro.base;
+  }
+  function askGyro() {
+    if (gyro.asked || !window.DeviceOrientationEvent || !(matchMedia('(pointer: coarse)').matches || navigator.maxTouchPoints > 0)) return;
+    gyro.asked = true;
+    const start = () => { gyro.on = true; gyro.base = null; addEventListener('deviceorientation', onOrient); };
+    if (typeof DeviceOrientationEvent.requestPermission === 'function') { // iOS 13+: a system prompt, answered once per site
+      DeviceOrientationEvent.requestPermission().then((s) => { if (s === 'granted') start(); }).catch(() => {});
+    } else start();
+  }
+  gyroBtn.addEventListener('click', () => {
+    gyro.on = !gyro.on; gyro.base = null; // on again: recentred on the device's direction at its next reading
+    gyroBtn.setAttribute('aria-pressed', String(gyro.on));
+    showMsg(gyro.on ? '轉動手機看四周' : '陀螺儀關閉，點畫面照亮');
+  });
+  const gyroLive = () => gyro.on && gyro.base !== null;
+  function turnBy(dYaw, dPitch) { // a drag or tap: added on top of the device's direction when that drives the view
+    if (gyroLive()) { gyro.addYaw += dYaw; gyro.addPitch += dPitch; return; }
+    look.yawGoal += dYaw; look.pitchGoal += dPitch; clampLook();
+  }
+
   function lookAtPointer(e) { // aim the view at the point under the pointer, as the camera stands now
     const r = canvas.getBoundingClientRect();
     const fx = (e.clientX - r.left) / r.width, fy = 1 - (e.clientY - r.top) / r.height;
     const tanV = Math.tan(camera.fov * DEG / 2);
     const sx = ((fx * L.W + L.offX) / (L.cols * L.cell)) * 2 - 1, sy = ((fy * L.H + L.offY) / (L.rows * L.cell)) * 2 - 1;
     dir.set(sx * tanV * camera.aspect, sy * tanV, -1).normalize().applyQuaternion(camera.quaternion);
-    look.yawGoal = Math.atan2(-dir.x, -dir.z);
-    look.pitchGoal = Math.asin(dir.y);
-    clampLook();
+    turnBy(wrapAngle(Math.atan2(-dir.x, -dir.z) - look.yaw) + look.yaw - look.yawGoal, Math.asin(dir.y) - look.pitchGoal);
   }
   canvas.addEventListener('pointerdown', (e) => {
     pressing = touched = true;
     canvas.setPointerCapture(e.pointerId);
     lastX = e.clientX; lastY = e.clientY; look.idle = 0;
+    askGyro();
     lookAtPointer(e);
     if (!msg.hidden) { msg.classList.add('off'); setTimeout(() => { msg.hidden = true; }, 1300); }
   });
   canvas.addEventListener('pointermove', (e) => {
     if (!pressing) return;
     const perPx = (2 * Math.atan(Math.tan(camera.fov * DEG / 2))) / canvas.clientHeight; // radians per CSS pixel
-    look.yawGoal -= (e.clientX - lastX) * perPx; // drag right, turn right
-    look.pitchGoal += (lastY - e.clientY) * perPx;
+    turnBy(-(e.clientX - lastX) * perPx, (lastY - e.clientY) * perPx); // drag right, turn right
     lastX = e.clientX; lastY = e.clientY; look.idle = 0;
-    clampLook();
   });
   const release = () => { pressing = false; };
   canvas.addEventListener('pointerup', release);
@@ -1038,8 +1184,8 @@ async function start() {
     camera.position.z = -walked;
     const phase = walked / 0.75 * Math.PI * 2;
     if (BOB) camera.position.x = Math.sin(phase / 2) * 0.012;
-    // one segment is kept behind the eye, so turning to look sideways never finds the walls gone
-    for (const seg of segments) if (seg.z0 > camera.position.z + 1 + SEG_L) { seg.z0 -= SEGS * SEG_L; buildSegment(seg); }
+    // segments are kept behind the eye too, so turning round never finds the walls gone (the far end stays dark)
+    for (const seg of segments) if (seg.z0 > camera.position.z + 1 + BEHIND * SEG_L) { seg.z0 -= SEGS * SEG_L; buildSegment(seg); }
     // outdoors only while a walkway slot is among the built ones; the lid closes the tunnel where the walls stop
     let zone = -1, far = segments[0];
     for (const seg of segments) { if (seg.walk) zone = Math.floor(slot(seg) / CYCLE); if (seg.z0 < far.z0) far = seg; }
@@ -1055,12 +1201,19 @@ async function start() {
     camera.position.y = EYE + lift + (BOB ? Math.sin(phase) * 0.022 : 0);
     cap.visible = !far.walk;
     cap.position.z = far.z0;
+    if (carpets) { // the rugs stand in the carpet stretch of the nearest cycle
+      const n = Math.floor((4 - camera.position.z) / SEG_L), k = Math.round((n - CARPET_SLOT - 1) / CYCLE);
+      carpets.position.z = 4 - (CYCLE * k + CARPET_SLOT) * SEG_L;
+    }
     sky.position.copy(camera.position);
 
     look.idle += dt;
-    if (look.idle > 3.5 && !pressing) { // drift back to rest: straight ahead in the tunnel, toward the mirror outside
+    if (gyroLive()) { // the device's direction, plus what taps and drags added; no drifting back
+      look.yawGoal = gyro.yaw + gyro.addYaw;
+      look.pitchGoal = THREE.MathUtils.clamp(gyro.pitch + gyro.addPitch, PITCH_MIN, PITCH_MAX);
+    } else if (look.idle > 3.5 && !pressing) { // drift back to rest: ahead in the tunnel, toward the mirror outside
       const k = 1 - Math.exp(-dt / 1.2);
-      look.yawGoal += (look.rest - look.yawGoal) * k;
+      look.yawGoal += wrapAngle(look.rest - look.yawGoal) * k; // the short way round
       look.pitchGoal += (look.restPitch - look.pitchGoal) * k;
     }
     const prevYaw = look.yaw, s = 1 - Math.exp(-dt / 0.09); // about 0.3 s to settle
