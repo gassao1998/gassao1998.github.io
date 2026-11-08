@@ -846,12 +846,13 @@ async function start() {
   renderer.compile(outScene, camera); // no shader compile stall the first time a walkway comes into view
 
   // ---------- hand holding the torch: the left hand cut out of a photo of the grip, seen from behind the way the eye
-  // sees it (left forearm in from the lower left, back of the hand up, the knuckles of the four curled fingers in a
-  // column, the thumb along the top of the barrel toward the head). The photo's tones are flattened to five levels,
-  // darkened and cooled for the tunnel, and outlined; the torch head is painted on. tools/trace_hand.py makes the PNG,
-  // transparent everywhere outside the hand. It sits on a plane in front of the camera, in its own scene, so the
-  // tunnel never hides it. Coordinates are the photo's pixels (3024 x 4032); the forearm runs on past its lower-left corner.
-  const HAND = { X0: -700, Y0: 2380, X1: 1700, Y1: 4600, FIST: [1400, 2760], FIST_W: 270, HEAD: [1516, 2500] };
+  // sees it (left forearm in from the lower left, the fist round the upright torch, the thumb over its front end, the
+  // fingers' nails on the right). The photo's tones are flattened to five levels, darkened and cooled for the tunnel,
+  // and outlined. tools/trace_hand.py makes the PNG, transparent everywhere outside the hand. It sits on a plane in
+  // front of the camera, in its own scene, so the tunnel never hides it. Coordinates are the photo's pixels
+  // (IMG_thumb_over, 3024 x 4032); the forearm runs on past its lower-left corner. The beam starts at the torch's front
+  // end, under the thumb.
+  const HAND = { X0: -900, Y0: 1750, X1: 1950, Y1: 4900, FIST: [1560, 2500], FIST_W: 560, HEAD: [1652, 1830] };
   const handTex = await new THREE.TextureLoader().loadAsync('assets/hand/hand.png').catch(() => null); // none from file://
   if (handTex) handTex.colorSpace = THREE.SRGBColorSpace;
   const hand = new THREE.Group(), headLocal = new THREE.Vector3();
