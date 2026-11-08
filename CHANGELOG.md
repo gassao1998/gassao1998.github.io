@@ -1,5 +1,8 @@
 # Changelog
 
+## 2026-11-08（第十版修正）
+- `ascii-cave/` 塗鴉改回去背前的版本（原始碼 repo `d12652a`）：`make-love`、`shutter`、`tugan`、`fuck-you`、`scam` 換回原本的 JPG、刪掉 PNG，`card.jpg` 換回原圖；只有 `protect-trans.png`（補完標語）保留。手與手電筒不動。
+
 ## 2026-11-08（第十版）
 - `ascii-cave/` 換成第十版（原始碼 repo `fb57dcb`）：6 張不是畫在牆上的塗鴉去背、改成透明 PNG（`make-love`、`protect-trans`、`shutter`、`tugan`、`fuck-you`、`scam`，同名 JPG 刪掉），`card.jpg` 補成牆面；「Protect trans Kids」照原筆跡補完最後的 s。手電筒改成銀色，食指指節提亮、小指尖收短。`assets/hand/hand.png` 與預覽圖換新。
 
