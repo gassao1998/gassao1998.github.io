@@ -80,13 +80,13 @@ async function start() {
   // ---------- constants ----------
   const R = 2.3, HW = 2.0, S = 2 * HW + Math.PI * R;   // tunnel half width, wall height, profile length
   const NS = 72, DS = S / NS;                          // samples around the arch
-  const DZ = 0.25, SEG_L = 12, NZ = SEG_L / DZ, SEGS = 6; // segment layout: 6 x 12 m of wall ahead
+  const DZ = 0.25, SEG_L = 12, NZ = SEG_L / DZ, SEGS = 7; // segment layout: one 12 m segment behind, six ahead
   const EYE = 1.6, SPEED = 1.15;                       // eye height, walk speed (m/s)
   // scene texels per cell side; by default 1 for the 3-4 px cells, which are nearly pixels already (README has the numbers)
   const K_FORCED = [1, 2, 3, 4].includes(Number(params.get('k'))) ? Number(params.get('k')) : 0;
   const CHARS = ' .:-=+*#%@';
   // assets/graffiti/*.jpg, cropped by tools/crop_graffiti.py; the first three are placed specially
-  const GRAFFITI = ['cat-arch', 'mural-sun', 'mural-dish', 'lilac', 'blue', 'bfd', 'code', 'yellow-e', 'love', 'fists',
+  const GRAFFITI = ['cat-band', 'mural-sun', 'mural-dish', 'lilac', 'blue', 'bfd', 'code', 'yellow-e', 'love', 'fists',
     'green', 'pillar', 'scam', 'mos-erevan', 'suka', 'gey', 'throw-green', 'green-saints', 'shutter',
     'tugan', 'underpass-l', 'underpass-cat', 'underpass-teal', 'underpass-lilac', 'make-love', 'protect-trans', 'portal-red',
     'portal-tags', 'orange', 'tasma', 'fuck-you', 'column', 'card', 'kiss', 'eyes'];
@@ -230,7 +230,7 @@ async function start() {
   const actx = atlasCanvas.getContext('2d', { willReadFrequently: true });
   actx.scale(fit, fit);
   for (const e of images) actx.drawImage(e.img, e.x, e.y);
-  const catImg = images.find((e) => e.name === 'cat-arch');
+  const catImg = images.find((e) => e.name === 'cat-band');
   if (catImg) { // white strokes on black -> strokes on transparent, so only the lines land on the wall
     const [x, y, w, h] = [catImg.x, catImg.y, catImg.img.width, catImg.img.height].map((v) => Math.round(v * fit));
     const d = actx.getImageData(x, y, w, h);
@@ -247,7 +247,7 @@ async function start() {
     name: e.name, aspect: e.img.width / e.img.height,
     u0: (e.x + 1) / AW, du: (e.img.width - 2) / AW, v0: 1 - (e.y + e.img.height - 1) / AH, dv: (e.img.height - 2) / AH,
   }));
-  const special = Object.fromEntries(['cat-arch', 'mural-sun', 'mural-dish'].map((n) => [n, pieces.find((p) => p.name === n)]));
+  const special = Object.fromEntries(['cat-band', 'mural-sun', 'mural-dish'].map((n) => [n, pieces.find((p) => p.name === n)]));
   const others = pieces.filter((p) => !Object.values(special).includes(p));
   const decalMat = new THREE.MeshStandardMaterial({
     map: atlas, vertexColors: true, transparent: true, depthWrite: false, roughness: 0.85,
@@ -256,13 +256,13 @@ async function start() {
 
   // ---------- segments (rebuilt in place when they fall behind, nothing allocated afterwards) ----------
   const DECAL_VERTS = 6000, DECAL_INDEX = 36000;
-  // cat picture edges, see addProjection; lowered 0.06 from the filmed framing so the ears fit a landscape view
-  const TAN = { x0: -0.364, x1: 0.2965, y0: -0.39, y1: 0.418 };
   const Z_FIRST = 4 - SEG_L * (1 + Math.floor(START / SEG_L)); // far end of the first segment ahead
   const slot = (seg) => Math.round((4 - SEG_L - seg.z0) / SEG_L); // world-fixed segment number
   // 156 m of tunnel, then 84 m outside on the ROT-54 walkway, and again; walkway slots build no tunnel
-  const TUNNEL_SLOTS = 13, WALK_SLOTS = 7, CYCLE = TUNNEL_SLOTS + WALK_SLOTS;
+  // the 120 m outside: 12 m of open ground with the track at each portal, the walkway in between
+  const TUNNEL_SLOTS = 13, WALK_SLOTS = 10, CYCLE = TUNNEL_SLOTS + WALK_SLOTS;
   const isWalk = (n) => n % CYCLE >= TUNNEL_SLOTS;
+  const isGround = (n) => n % CYCLE === TUNNEL_SLOTS || n % CYCLE === CYCLE - 1;
   const zoneExit = (k) => 4 - SEG_L * (TUNNEL_SLOTS + CYCLE * k); // z where the k-th walkway leaves the tunnel
   let bag = [];
   const rand = (a, b) => a + Math.random() * (b - a);
@@ -280,7 +280,7 @@ async function start() {
     }
     decal.setIndex(new THREE.BufferAttribute(new Uint16Array(DECAL_INDEX), 1).setUsage(THREE.DynamicDrawUsage));
     const seg = {
-      z0: Z_FIRST - k * SEG_L, P: new Float32Array(GW * GH * 3), N: new Float32Array(GW * GH * 3),
+      z0: Z_FIRST - (k - 1) * SEG_L, P: new Float32Array(GW * GH * 3), N: new Float32Array(GW * GH * 3),
       wall: new THREE.Mesh(wall, wallMat), decal: new THREE.Mesh(decal, decalMat), nv: 0, ni: 0,
     };
     seg.wall.frustumCulled = seg.decal.frustumCulled = false; // rebuilt in place, bounds would go stale
@@ -334,11 +334,11 @@ async function start() {
   function placeGraffiti(seg) {
     seg.nv = seg.ni = 0;
     const n = slot(seg), top = seg.z0 + SEG_L - rand(0.05, 0.6);
-    const cat = special['cat-arch'], sun = special['mural-sun'], dish = special['mural-dish'];
-    if (n % 4 === 1 && cat) { // every 48 m the cat spans both walls and the ceiling; the walls under it stay bare
-      const eye = seg.z0 + SEG_L + 0.5;
-      addProjection(seg, cat, eye, 1.5);
-      for (const side of [-1, 1]) { fill(seg, side, eye - 2.2, top); fill(seg, side, seg.z0 + 0.1, eye - 11.5); }
+    const cat = special['cat-band'], sun = special['mural-sun'], dish = special['mural-dish'];
+    if (n % 4 === 1 && cat) { // every 48 m the cat lies across the arch; the walls under it stay bare
+      const zc = seg.z0 + SEG_L / 2;
+      addBand(seg, cat, zc - 2, zc + 2, 1.5);
+      for (const side of [-1, 1]) { fill(seg, side, zc + 2.4, top); fill(seg, side, seg.z0 + 0.1, zc - 2.4); }
     } else if (n % 6 === 3 && sun && dish) { // every 72 m the control-room mural, laid out as on its wall
       const side = Math.floor(n / 6) % 2 ? 1 : -1, H = 1.7, L = H * sun.aspect, H2 = H * 0.86, L2 = H2 * dish.aspect;
       const zc = seg.z0 + rand(0.8, SEG_L - L - 0.8), yd = 0.15, ys = yd + H2;
@@ -374,29 +374,26 @@ async function start() {
     }
   }
 
-  // The cat as filmed (phone held at eye height, about 40 deg across in portrait): project the picture back
-  // from an eye point on the centre line at `eye`, so it reads whole from there and spreads over the
-  // walls and ceiling as you walk under it. TAN (defined above) = the picture's edges as projector tangents.
-  function addProjection(seg, p, eye, tint) {
-    const j0 = Math.max(0, Math.ceil((eye - 12 - seg.z0) / DZ)), j1 = Math.min(NZ, Math.floor((eye - 3 - seg.z0) / DZ));
+  // The cat strip (tools/crop_graffiti.py cat_band) is the arch unrolled: across = the tunnel profile from the
+  // left floor over the ceiling to the right floor, down = along the tunnel, nearest edge first. Laid on the
+  // wall grid it puts the haunch and tail on the left wall, the back along the ceiling and the head on the right.
+  function addBand(seg, p, zA, zB, tint) {
+    const j0 = Math.max(0, Math.round((zA - seg.z0) / DZ)), j1 = Math.min(NZ, Math.round((zB - seg.z0) / DZ));
     const nj = j1 - j0 + 1, ni = NS + 1;
-    if (nj < 2 || seg.nv + ni * nj > DECAL_VERTS) return;
+    if (nj < 2 || seg.nv + ni * nj > DECAL_VERTS || seg.ni + (ni - 1) * (nj - 1) * 6 > DECAL_INDEX) return;
     const g = seg.decal.geometry, pos = g.attributes.position.array, nor = g.attributes.normal.array;
     const uv = g.attributes.uv.array, col = g.attributes.color.array, idx = g.index.array;
     const base = seg.nv;
     for (let j = j0; j <= j1; j++) for (let i = 0; i <= NS; i++) {
       const k = ((j + 1) * GW + i + 1) * 3, v = seg.nv++;
       for (let c = 0; c < 3; c++) { pos[v * 3 + c] = seg.P[k + c] + seg.N[k + c] * 0.03; nor[v * 3 + c] = seg.N[k + c]; }
-      const ahead = eye - pos[v * 3 + 2];
-      const u = (pos[v * 3] / ahead - TAN.x0) / (TAN.x1 - TAN.x0), w = ((pos[v * 3 + 1] - EYE) / ahead - TAN.y0) / (TAN.y1 - TAN.y0);
-      uv[v * 2] = p.u0 + THREE.MathUtils.clamp(u, 0, 1) * p.du; uv[v * 2 + 1] = p.v0 + THREE.MathUtils.clamp(w, 0, 1) * p.dv;
+      uv[v * 2] = p.u0 + (i / NS) * p.du;                                 // left floor -> right floor
+      uv[v * 2 + 1] = p.v0 + ((j - j0) / (j1 - j0)) * p.dv;               // far edge -> near edge (strip bottom -> top)
       col[v * 4] = col[v * 4 + 1] = col[v * 4 + 2] = tint;
-      col[v * 4 + 3] = u >= 0 && u <= 1 && w >= 0 && w <= 1 ? 1 : 0;
+      col[v * 4 + 3] = j === j0 || j === j1 ? 0 : 1;
     }
     for (let j = 0; j < nj - 1; j++) for (let i = 0; i < ni - 1; i++) {
       const a = base + j * ni + i, c = a + ni, m = seg.ni;
-      if (col[a * 4 + 3] + col[(a + 1) * 4 + 3] + col[c * 4 + 3] + col[(c + 1) * 4 + 3] === 0) continue; // outside
-      if (m + 6 > DECAL_INDEX) return;
       idx[m] = a; idx[m + 1] = a + 1; idx[m + 2] = c; idx[m + 3] = a + 1; idx[m + 4] = c + 1; idx[m + 5] = c;
       seg.ni += 6;
     }
@@ -468,14 +465,14 @@ async function start() {
       const z = z0 + (h(2) - 0.5) * 0.14, yaw = (h(3) - 0.5) * 0.22, sink = h(4) * 0.05;
       const wood = 0.08 + 0.09 * h(5), grey = h(6);
       const colour = () => [wood * (1.25 - 0.2 * grey), wood * (0.85 + 0.1 * grey), wood * (0.55 + 0.3 * grey)];
-      const pieces = h(7) < 0.14 ? [[-0.56, 0.98, 0.06], [0.6, 0.9, -0.09]] : [[0, 2.1, 0]]; // broken in two, one end tipped
+      const pieces = h(7) < 0.14 ? [[-0.4, 0.7, 0.06], [0.42, 0.64, -0.09]] : [[0, 1.5, 0]]; // broken in two, one end tipped
       for (const [cx, w, tilt] of pieces) {
         const g = new THREE.BoxGeometry(w, 0.08, 0.22).rotateZ(tilt).rotateY(yaw).translate(cx, 0.03 - sink, z);
         paint(g, colour);
       }
     }
     // rails: rusty, uneven brown sides; the top keeps broken streaks of polish
-    for (const x of [-0.6, 0.6]) {
+    for (const x of [-0.41, 0.41]) { // 750 mm narrow gauge, like the Yerevan children's railway (docs/tunnel-reference.md)
       const n = Math.round(len / 0.25);
       paint(new THREE.BoxGeometry(0.07, 0.11, len, 1, 1, n).translate(x, 0.125, zNear - len / 2), (px, py, pz) => {
         const r = 0.6 + 0.4 * pnoise(px * 4, pz, 1.4);
@@ -490,28 +487,39 @@ async function start() {
     return () => { const m = new THREE.Mesh(geo, mat); m.frustumCulled = false; scene.add(m); return m; };
   })();
   for (const seg of segments) { seg.track = trackMesh(); placeTrack(seg); }
-  function placeTrack(seg) { seg.track.position.z = seg.z0; seg.track.visible = !seg.walk; }
+  function placeTrack(seg) { seg.track.position.z = seg.z0; seg.track.visible = !seg.walk || isGround(slot(seg)); }
 
   // black lid on the far end of the built tunnel, so the outdoors never shows through where the walls stop
   const cap = new THREE.Mesh(new THREE.PlaneGeometry(16, 12).translate(0, 4, 0), new THREE.MeshBasicMaterial({ color: 0 }));
   scene.add(cap);
 
   // ---------- outside: the ROT-54 walkway (docs/rot54-reference.md); local z = 0 is the tunnel exit ----------
-  const WALK_L = WALK_SLOTS * SEG_L, RIM_Y = -1.6, DISH = { x: 30, z: -46, r: 27, R: 48 };
+  const WALK_L = WALK_SLOTS * SEG_L, GROUND_L = SEG_L, RIM_Y = -1.6, DISH = { x: 28.5, z: -60, r: 27, R: 48 };
+  const WALK_A = -GROUND_L, WALK_B = -WALK_L + GROUND_L; // the walkway runs between these (local z)
+  // deck height along the walkway: six steps up at the start, six down at the end (0.18 m rise, 0.5 m run)
+  const STEP_RUN = 0.5, STEP_RISE = 0.18, FLIGHT = 6, DECK_TOP = STEP_RISE * FLIGHT;
+  const deckY = (z) => z > WALK_A || z < WALK_B ? 0
+    : STEP_RISE * Math.min(FLIGHT, Math.floor((WALK_A - z) / STEP_RUN) + 1, Math.floor((z - WALK_B) / STEP_RUN) + 1);
   const DISH_CY = RIM_Y + Math.sqrt(DISH.R ** 2 - DISH.r ** 2);
   const dishY = (r) => DISH_CY - Math.sqrt(DISH.R ** 2 - Math.min(r, DISH.r) ** 2);
   const smooth = THREE.MathUtils.smoothstep;
-  function groundY(x, z) { // valley under the walkway, slope up on the left, a level apron round the dish, hills at both portals
+  function groundY(x, z) {
     const n1 = simplex.noise(x / 22, z / 22), n2 = simplex.noise(x / 7 + 30, z / 7);
+    // the low ground the walkway crosses: a valley under it, rising on the left, a level apron round the dish
     let h = -8 + Math.max(0, -x - 4) * 0.32 + Math.max(0, Math.abs(x) - 90) * 0.4 + n1 * 2.2 + n2 * 0.5;
     const r = Math.hypot(x - DISH.x, z - DISH.z);
     h += (RIM_Y - 0.25 - h) * (1 - smooth(r, DISH.r + 5, DISH.r + 22));
     if (r < DISH.r + 0.6) h = Math.min(h, dishY(r) - 0.5);
-    const hill = Math.max(smooth(z, -9, 0), smooth(-z, WALK_L - 9, WALK_L));
-    return h + (10.5 + n1 * 2.5 + Math.abs(x) * 0.04 - h) * hill;
+    // open, nearly level ground in front of each portal, at track height
+    const open = Math.max(smooth(z, WALK_A - 6, WALK_A + 2), smooth(-z, -WALK_B - 6, -WALK_B + 2)) * (1 - smooth(Math.abs(x), 22, 40));
+    h += (-0.15 + n2 * 0.08 - h) * open;
+    // a small wooded mound the tunnel runs into, starting right at each portal face
+    const mound = Math.max(smooth(z, 0, 5), smooth(-z, WALK_L, WALK_L + 5)) * (1 - smooth(Math.abs(x), 8, 24));
+    return h + Math.max(0, 7.5 + n1 * 1.5 - h) * mound;
   }
-  // no ground along the bridge corridor (a dark drop under the deck) nor over the tunnel mouths, where it would cut in
-  const inCorridor = (x, z) => Math.abs(x) < 4.6 && z < 3.5 && z > -WALK_L - 3.5;
+  // no ground along the bridge (a dark drop under the deck) nor just behind the portal faces, where the
+  // mound's first slope would cut into the tunnel mouth (terrain rows fall exactly on both faces)
+  const inCorridor = (x, z) => Math.abs(x) < 4.6 && ((z < WALK_A + 1 && z > WALK_B - 1) || (z > 0 && z < 5) || (z < -WALK_L && z > -WALK_L - 5));
   const outside = new THREE.Group(), Y_AXIS = new THREE.Vector3(0, 1, 0);
   outScene.add(outside);
   outScene.fog = new THREE.FogExp2(0x0d1426, 0.0045);
@@ -581,56 +589,160 @@ async function start() {
         beam(list, corner((k + 1) % 4, y), corner(k, y1), t * 0.5);
       }
     };
-    const base = dishY(0), top = base + 28;
-    lattice(white, DISH.x, DISH.z, base, 28, 3.2, 1.4, 2.8, 0.18);
-    const cabin = new THREE.CylinderGeometry(1.5, 1.1, 5, 14).translate(DISH.x, top + 2.5, DISH.z);
-    white.push(cabin, new THREE.CylinderGeometry(0.15, 1.5, 2, 14).translate(DISH.x, top + 6, DISH.z));
-    const dirA = V(Math.cos(0.6), 0, Math.sin(0.6)); // the arch's plane, across the walkway's line of sight
-    const arc = (r, t) => V(DISH.x + dirA.x * Math.cos(t) * r, RIM_Y + Math.sin(t) * r, DISH.z + dirA.z * Math.cos(t) * r);
-    for (let i = 0; i < 36; i++) {
-      const t0 = (i / 36) * Math.PI, t1 = ((i + 1) / 36) * Math.PI;
-      beam(rust, arc(DISH.r + 0.4, t0), arc(DISH.r + 0.4, t1), 0.35);
-      beam(rust, arc(DISH.r - 1.2, t0), arc(DISH.r - 1.2, t1), 0.3);
-      beam(rust, arc(DISH.r + 0.4, t0), arc(DISH.r - 1.2, t1), 0.18);
+    // the feed tower (IMG_7378): white lattice like an hourglass, narrow at the waist where the arches hold it,
+    // a tall cylindrical cage above and a cap on top
+    const base = dishY(0), waist = RIM_Y + 4, cage = waist + 6, top = cage + 10;
+    const radius = (y) => y < waist ? 2.6 + (0.9 - 2.6) * (y - base) / (waist - base) : y < cage ? 0.9 + (2.3 - 0.9) * (y - waist) / (cage - waist) : 2.3;
+    const ringAt = (y, k) => { const a = (k / 8) * TAU, r = radius(y); return V(DISH.x + Math.cos(a) * r, y, DISH.z + Math.sin(a) * r); };
+    for (let y = base; y < top - 0.01; y += 1.6) {
+      const y1 = Math.min(top, y + 1.6);
+      for (let k = 0; k < 8; k++) {
+        beam(white, ringAt(y, k), ringAt(y1, k), 0.14);                      // posts
+        beam(white, ringAt(y1, k), ringAt(y1, k + 1), 0.1);                  // ring
+        beam(white, ringAt(y, k), ringAt(y1, k + 1), 0.07);                  // diagonal
+      }
     }
-    for (const [x, z] of [[DISH.x + 31, DISH.z + 14], [DISH.x + 17, DISH.z - 30]]) {
+    white.push(new THREE.CylinderGeometry(0.2, 2.5, 2.4, 16).translate(DISH.x, top + 1.2, DISH.z));
+    // two white lattice arches across the bowl, rim to rim, crossing at the cage's foot
+    for (const a of [0.55, -0.55]) {
+      const dirA = V(Math.sin(a), 0, Math.cos(a));
+      const arc = (t, drop) => V(DISH.x + dirA.x * Math.cos(t) * DISH.r, RIM_Y + Math.sin(t) * (cage - RIM_Y) - drop, DISH.z + dirA.z * Math.cos(t) * DISH.r);
+      for (let i = 0; i < 40; i++) {
+        const t0 = (i / 40) * Math.PI, t1 = ((i + 1) / 40) * Math.PI;
+        beam(white, arc(t0, 0), arc(t1, 0), 0.22);
+        beam(white, arc(t0, 1.1), arc(t1, 1.1), 0.18);
+        beam(white, arc(t0, 0), arc(t1, 1.1), 0.08);
+      }
+    }
+    for (const [x, z] of [[DISH.x + 34, DISH.z - 22], [DISH.x - 2, DISH.z - 36]]) {
       lattice(rust, x, z, groundY(x, z) - 0.5, 32, 2.6, 1.2, 2.6, 0.16);
     }
-    // the walkway: steel deck, rust pipe rails (top 1.1 m, middle 0.55 m, posts every 2 m), a trestle every 6 m
-    dark.push(new THREE.BoxGeometry(1.3, 0.08, WALK_L).translate(0, -0.04, -WALK_L / 2));
-    for (const x of [-0.68, 0.68]) {
-      for (const y of [1.1, 0.55]) beam(rails, V(x, y, 0), V(x, y, -WALK_L), 0.06);
-      for (let z = 0; z >= -WALK_L; z -= 2) beam(rails, V(x, 0, z), V(x, 1.1, z), 0.06);
-    }
-    for (let z = -3; z > -WALK_L; z -= 6) {
-      const yl = groundY(-0.6, z) - 0.3, yr = groundY(0.6, z) - 0.3;
-      if (Math.max(yl, yr) > -0.6) continue; // the cutting near the portals carries the deck itself
-      beam(dark, V(-0.6, yl, z), V(-0.6, -0.08, z), 0.14);
-      beam(dark, V(0.6, yr, z), V(0.6, -0.08, z), 0.14);
-      beam(dark, V(-0.7, -0.14, z), V(0.7, -0.14, z), 0.12);
-      beam(dark, V(-0.6, yl, z), V(0.6, -0.2, z), 0.08);
-      beam(dark, V(0.6, yr, z), V(-0.6, -0.2, z), 0.08);
+    // trestles under the deck every 6 m, down to the valley floor
+    for (let z = WALK_A - 6; z > WALK_B + 3; z -= 6) {
+      const top = deckY(z) - 0.1, yl = groundY(-0.6, z) - 0.3, yr = groundY(0.6, z) - 0.3;
+      if (Math.max(yl, yr) > top - 0.5) continue;
+      beam(dark, V(-0.6, yl, z), V(-0.6, top, z), 0.14);
+      beam(dark, V(0.6, yr, z), V(0.6, top, z), 0.14);
+      beam(dark, V(-0.7, top - 0.06, z), V(0.7, top - 0.06, z), 0.12);
+      beam(dark, V(-0.6, yl, z), V(0.6, top - 0.12, z), 0.08);
+      beam(dark, V(0.6, yr, z), V(-0.6, top - 0.12, z), 0.08);
     }
     const mat = (color, rough) => new THREE.MeshStandardMaterial({ color, roughness: rough, metalness: 0.3 });
     outside.add(new THREE.Mesh(mergeGeometries(white), mat(0xd6d4cc, 0.6)), new THREE.Mesh(mergeGeometries(rust), mat(0x7a3a18, 0.8)),
-      new THREE.Mesh(mergeGeometries(rails), mat(0x8a2a14, 0.7)), new THREE.Mesh(mergeGeometries(dark), mat(0x2c2c2e, 0.8)));
+      new THREE.Mesh(mergeGeometries(dark), mat(0x2c2c2e, 0.8)));
+    // the brick-red laboratory block on the rim, rows of big dark windows facing the walkway
+    const facade = canvasTex(256, 160, (g, w, h) => {
+      g.fillStyle = '#6b3326'; g.fillRect(0, 0, w, h);
+      for (let row = 0; row < 4; row++) for (let col = 0; col < 8; col++) {
+        g.fillStyle = '#c7bfb2'; g.fillRect(col * 32 + 4, row * 40 + 8, 24, 26);
+        g.fillStyle = hash(row * 9 + col) < 0.3 ? '#2a2a2c' : '#121214'; g.fillRect(col * 32 + 6, row * 40 + 10, 20, 22);
+      }
+    }, [1, 1]);
+    const block = new THREE.Mesh(new THREE.BoxGeometry(11, 14, 30), new THREE.MeshStandardMaterial({ map: facade, roughness: 0.9 }));
+    block.position.set(DISH.x + DISH.r + 9, RIM_Y - 0.25 + 7, DISH.z + 22);
+    block.rotation.y = 0.35;
+    outside.add(block);
   }
-  { // portal faces: pinkish tuff blocks round the tunnel arch, slightly inside the rough tunnel walls so no gap shows
+  { // the walkway (IMG_7378): red chequer-plate deck with white edges and flights of steps (red treads, white
+    // nosings), red pipe railings (posts every 1.2 m, a hand rail and one middle rail) with blotchy, rusty paint
+    const plate = canvasTex(128, 128, (g, w, h) => {
+      g.fillStyle = '#6e1d16'; g.fillRect(0, 0, w, h);
+      for (let y = 0; y < h; y += 8) for (let x = (y / 8) % 2 ? 4 : 0; x < w; x += 8) { // raised diamonds
+        g.fillStyle = '#93362a'; g.beginPath(); g.moveTo(x + 4, y + 1); g.lineTo(x + 6, y + 4); g.lineTo(x + 4, y + 7); g.lineTo(x + 2, y + 4); g.fill();
+      }
+      for (let k = 0; k < 14; k++) { // paint worn through to grey steel and rust
+        g.fillStyle = hash(k * 3.7) < 0.5 ? 'rgba(96,92,88,0.85)' : 'rgba(84,46,24,0.8)';
+        g.beginPath(); g.ellipse(hash(k * 1.3) * w, hash(k * 2.9) * h, 3 + hash(k * 5.1) * 9, 2 + hash(k * 7.3) * 6, hash(k) * 3, 0, TAU); g.fill();
+      }
+      g.fillStyle = '#c9c4ba'; g.fillRect(0, 0, 9, h); g.fillRect(w - 9, 0, 9, h); // white edge strips
+    }, [1, 1]);
+    const deck = [], white = [], pipes = [], V = (x, y, z) => new THREE.Vector3(x, y, z);
+    const worldUV = (g) => { // texture laid in metres: across the deck, and repeating every 1.3 m along it
+      const p = g.attributes.position.array, uv = g.attributes.uv.array;
+      for (let i = 0, j = 0; i < p.length; i += 3, j += 2) { uv[j] = (p[i] + 0.65) / 1.3; uv[j + 1] = p[i + 2] / 1.3; }
+      return g;
+    };
+    for (let z = WALK_A; z > WALK_B; z -= STEP_RUN) { // one tread per step run
+      const y = deckY(z - STEP_RUN / 2), z1 = Math.max(z - STEP_RUN, WALK_B), before = deckY(z + 0.01);
+      deck.push(worldUV(new THREE.BoxGeometry(1.3, 0.08, z - z1).translate(0, y - 0.04, (z + z1) / 2)));
+      const lo = Math.min(y, before), hi = Math.max(y, before);
+      if (hi - lo > 0.01) { // a step: riser between the two treads, white nosing on the upper edge
+        deck.push(worldUV(new THREE.BoxGeometry(1.3, hi - lo, 0.04).translate(0, (hi + lo) / 2 - 0.04, z)));
+        white.push(new THREE.BoxGeometry(1.3, 0.035, 0.06).translate(0, hi + 0.002, y > before ? z - 0.03 : z + 0.03));
+      }
+    }
+    const pipe = (a, b, r) => {
+      const d = b.clone().sub(a), g = new THREE.CylinderGeometry(r, r, d.length(), 8, 1).translate(0, d.length() / 2, 0);
+      pipes.push(g.applyQuaternion(new THREE.Quaternion().setFromUnitVectors(Y_AXIS, d.normalize())).translate(a.x, a.y, a.z));
+    };
+    for (const x of [-0.68, 0.68]) {
+      let prev = null;
+      for (let z = WALK_A; z >= WALK_B - 0.01; z -= 1.2) {
+        const y = deckY(Math.min(z, WALK_A - 0.01)), post = V(x, y, z);
+        pipe(post, V(x, y + 1.05, z), 0.026);
+        if (prev) { pipe(V(x, prev.y + 1.05, prev.z), V(x, y + 1.05, z), 0.03); pipe(V(x, prev.y + 0.55, prev.z), V(x, y + 0.55, z), 0.024); }
+        prev = post;
+      }
+    }
+    const rails = mergeGeometries(pipes), rp = rails.attributes.position.array, rc = new Float32Array(rp.length);
+    for (let i = 0; i < rp.length; i += 3) { // red paint, blotched with rust and patches where it has gone chalky white
+      const n = simplex.noise3d(rp[i] * 3, rp[i + 1] * 3, rp[i + 2] * 1.5), m = simplex.noise3d(rp[i + 2] * 0.7, 5, rp[i + 1] * 4);
+      const c = n > 0.35 ? [0.3, 0.13, 0.06] : m > 0.55 ? [0.72, 0.69, 0.64] : [0.55, 0.1, 0.07];
+      rc.set(c, i);
+    }
+    rails.setAttribute('color', new THREE.BufferAttribute(rc, 3));
+    outside.add(new THREE.Mesh(mergeGeometries(deck), new THREE.MeshStandardMaterial({ map: plate, roughness: 0.75, metalness: 0.35 })),
+      new THREE.Mesh(mergeGeometries(white), new THREE.MeshStandardMaterial({ color: 0xc9c4ba, roughness: 0.8 })),
+      new THREE.Mesh(rails, new THREE.MeshStandardMaterial({ vertexColors: true, roughness: 0.6, metalness: 0.4 })));
+  }
+  { // portal faces (IMG_7795): a pinkish tuff end wall just round the arch, leaning back a little at the sides,
+    // a concrete ring at the arch; the opening sits slightly inside the rough tunnel walls so no gap shows
     const stone = canvasTex(256, 256, (g) => {
       g.fillStyle = '#2a201c'; g.fillRect(0, 0, 256, 256);
       for (let row = 0; row < 8; row++) for (let i = -1; i < 5; i++) {
         const x = i * 64 + (row % 2) * 32, k = 0.75 + 0.45 * hash(row * 31.7 + i * 7.3);
         g.fillStyle = shade(150, 112, 102, k); g.fillRect(x + 2, row * 32 + 2, 60, 28);
       }
-    }, [0.5, 0.5]);
-    const shape = new THREE.Shape().moveTo(-12, -10).lineTo(12, -10).lineTo(12, 12).lineTo(-12, 12).lineTo(-12, -10);
-    const r = R - 0.2;
-    shape.holes.push(new THREE.Path().moveTo(-r, -0.3).lineTo(r, -0.3).lineTo(r, HW).absarc(0, HW, r, 0, Math.PI, false).lineTo(-r, -0.3));
-    const geo = new THREE.ShapeGeometry(shape, 24), mat = new THREE.MeshStandardMaterial({ map: stone, roughness: 0.95 });
-    const exit = new THREE.Mesh(geo, mat), entry = new THREE.Mesh(geo, mat);
-    exit.rotation.y = Math.PI;      // faces the walkway, which runs toward -z
-    entry.position.z = -WALK_L;
-    outside.add(exit, entry);
+    }, [0.6, 0.6]);
+    const r = R - 0.2, archPath = (rr, y0) => new THREE.Path().moveTo(-rr, y0).lineTo(rr, y0).lineTo(rr, HW).absarc(0, HW, rr, 0, Math.PI, false).lineTo(-rr, y0);
+    const wall = new THREE.Shape().moveTo(-5.6, -1).lineTo(5.6, -1).lineTo(4.7, HW + R + 1.6).lineTo(-4.7, HW + R + 1.6).lineTo(-5.6, -1);
+    wall.holes.push(archPath(r + 0.45, -0.3));
+    const ring = new THREE.Shape(archPath(r + 0.45, -0.3).getPoints(48));
+    ring.holes.push(archPath(r, -0.3));
+    const wallGeo = new THREE.ShapeGeometry(wall, 24), ringGeo = new THREE.ShapeGeometry(ring, 24).translate(0, 0, 0.02);
+    const wallMat = new THREE.MeshStandardMaterial({ map: stone, roughness: 0.95 });
+    const ringMat = new THREE.MeshStandardMaterial({ color: 0x8e8d88, roughness: 0.9 });
+    for (const [z, turn] of [[0, Math.PI], [-WALK_L, 0]]) { // the exit faces the walkway (toward -z), the entry faces back
+      for (const m of [new THREE.Mesh(wallGeo, wallMat), new THREE.Mesh(ringGeo, ringMat)]) {
+        m.rotation.y = turn; m.position.z = z; outside.add(m);
+      }
+    }
+  }
+  { // sparse trees on the mounds and round the open ground, and fallen leaves on the ground at both portals
+    const parts = [], tint = (geo, c) => {
+      const g = geo.index ? geo.toNonIndexed() : geo, n = g.attributes.position.count, col = new Float32Array(n * 3);
+      for (let i = 0; i < n; i++) col.set(c, i * 3);
+      g.setAttribute('color', new THREE.BufferAttribute(col, 3));
+      parts.push(g.deleteAttribute('uv'));
+    };
+    for (let k = 0; k < 46; k++) {
+      const end = k % 2 ? 0 : -WALK_L, out = end ? 1 : -1;     // +1 beyond the entry (-z), -1 behind the exit
+      const x = (hash(k * 3.3) < 0.5 ? -1 : 1) * (6 + hash(k * 5.1) * 34);
+      const z = end + (hash(k * 7.7) * 34 - 14) * -out;         // mostly on the mound, some on the open ground
+      if (Math.hypot(x - DISH.x, z - DISH.z) < DISH.r + 8 || (Math.abs(x) < 7 && z < WALK_A + 2 && z > WALK_B - 2)) continue;
+      const y = groundY(x, z), hgt = 4 + hash(k * 9.9) * 5;
+      tint(new THREE.CylinderGeometry(0.12, 0.2, hgt * 0.55, 6).translate(x, y + hgt * 0.27, z), [0.09, 0.07, 0.05]);
+      tint(new THREE.IcosahedronGeometry(1.3 + hgt * 0.22, 0).scale(1, 1.25, 1).translate(x, y + hgt * 0.7, z),
+        [0.07 + 0.05 * hash(k), 0.09 + 0.03 * hash(k * 2), 0.04]);
+    }
+    for (let k = 0; k < 520; k++) {
+      const z = (k % 2 ? 0 : -WALK_L) + (k % 2 ? -1 : 1) * hash(k * 1.7) * 11, x = (hash(k * 2.9) - 0.5) * 12;
+      const onBed = Math.abs(x) < 2.6, y = onBed ? 0.1 : groundY(x, z) + 0.03;
+      const leaf = new THREE.PlaneGeometry(0.16, 0.1).rotateX(-Math.PI / 2).rotateY(hash(k * 4.1) * TAU).translate(x, y, z);
+      const t = hash(k * 6.3);
+      tint(leaf, [0.32 + 0.2 * t, 0.15 + 0.12 * t, 0.04]);  // orange to brown
+    }
+    outside.add(new THREE.Mesh(mergeGeometries(parts), new THREE.MeshStandardMaterial({ vertexColors: true, roughness: 0.95, side: THREE.DoubleSide })));
   }
   // night sky, moon, stars and a ring of far mountains, all following the camera so they never get closer
   const sky = new THREE.Group();
@@ -688,15 +800,22 @@ async function start() {
   const alongZ = (geo) => geo.rotateX(Math.PI / 2);
   const grip = await gripArm(); // CC0 wrad-arms viewmodel rig, left arm posed round the barrel; null if it can't load
   const RB = grip ? grip.radius : 0.016;
-  part(alongZ(new THREE.CylinderGeometry(RB, RB, 0.17, 20)), metal, 0, 0, 0.015);          // barrel, tail just past the little finger
-  part(alongZ(new THREE.CylinderGeometry(RB + 0.009, RB, 0.045, 20)), metal, 0, 0, 0.12);  // head out of the thumb web
-  part(new THREE.TorusGeometry(RB + 0.008, 0.003, 8, 24), chrome, 0, 0, 0.143);          // bezel
-  const led = part(new THREE.SphereGeometry(0.005, 12, 8), new THREE.MeshBasicMaterial({ color: new THREE.Color(0.35, 4, 0.9) }), 0, RB + 0.001, -0.058);
-  // the forearm points from a reference elbow low on the left toward the wrist, so it leaves through the
-  // bottom-left corner whatever the aim (view models are held higher than a real hand would be)
-  const ELBOW = new THREE.Vector3(-0.3, -0.4, 0.1), SHOULDER_TO_ELBOW = new THREE.Vector3(0.3, 0.5, -0.8).normalize();
+  // a short EDC torch (11 cm): the tail and its ring just show below the little finger, the head and switch
+  // stand out of the thumb web
+  part(alongZ(new THREE.CylinderGeometry(RB, RB, 0.08, 20)), metal, 0, 0, -0.005);           // barrel
+  part(alongZ(new THREE.CylinderGeometry(RB + 0.007, RB, 0.03, 20)), metal, 0, 0, 0.05);     // head
+  part(new THREE.TorusGeometry(RB + 0.006, 0.003, 8, 24), chrome, 0, 0, 0.066);             // bezel
+  part(new THREE.TorusGeometry(RB, 0.0025, 8, 24), chrome, 0, 0, -0.045);                    // tail ring
+  // the tail switch with its green light faces back at you out of the bottom of the fist, toward the thumb side
+  const ledAt = grip ? grip.thumb.clone().multiplyScalar(RB * 0.45).setZ(-0.047) : new THREE.Vector3(0, 0, -0.047);
+  const led = part(new THREE.SphereGeometry(0.0055, 12, 8), new THREE.MeshBasicMaterial({ color: new THREE.Color(0.35, 4, 0.9) }), ledAt.x, ledAt.y, ledAt.z);
+  // arm held straight out: the forearm reaches the wrist from a reference elbow low on the left and behind,
+  // so it comes in foreshortened from the bottom-left corner; the upper arm continues on out of sight
+  const ELBOW = new THREE.Vector3(-0.28, -0.32, 0.25), SHOULDER_TO_ELBOW = new THREE.Vector3(0.3, 0.45, -0.84).normalize();
+  const FORE = ELBOW.clone().negate().normalize(); // elbow -> grip, in hand space
   const Y = new THREE.Vector3(0, 1, 0), wristPos = new THREE.Vector3(), wristQ = new THREE.Quaternion();
   const dirV = new THREE.Vector3(), handX = new THREE.Vector3(), zV = new THREE.Vector3(), basis = new THREE.Matrix4();
+  const barrel = new THREE.Vector3(), across = new THREE.Vector3(), basisH = new THREE.Matrix4(), handQInv = new THREE.Quaternion();
 
   async function gripArm() {
     const gltf = await new GLTFLoader().loadAsync('assets/models/arms.glb').catch(() => null);
@@ -756,20 +875,21 @@ async function start() {
     const tAxis = new THREE.Vector3().crossVectors(tDir, towardAxis).normalize();
     turn(T[1], tAxis, 20);
     turn(T[2], tAxis, 18);
-    // wrist frame in torch space: barrel axis -> +Z, back of the hand -> up and toward the eye, which sits
-    // above and to the right of a hand in the lower-left corner (+X is the screen's left)
+    // wrist frame -> torch space (barrel axis -> +Z); each frame the whole hand is then turned about the barrel
+    // so the hand's long axis lines up with the forearm, which keeps the wrist straight whatever the aim
     const back = palm.clone().negate(); back.addScaledVector(D, -back.dot(D)).normalize();
     const m0 = new THREE.Matrix4().makeBasis(D, back, new THREE.Vector3().crossVectors(D, back));
-    const up = new THREE.Vector3(-0.59, 0.81, 0), Z = new THREE.Vector3(0, 0, 1);
-    const m1 = new THREE.Matrix4().makeBasis(Z, up, new THREE.Vector3().crossVectors(Z, up));
+    const Z = new THREE.Vector3(0, 0, 1), m1 = new THREE.Matrix4().makeBasis(Z, Y_AXIS, new THREE.Vector3(1, 0, 0).negate());
     const q = new THREE.Quaternion().setFromRotationMatrix(m1.multiply(m0.transpose()));
-    const p = C.clone().multiplyScalar(S).applyQuaternion(q).negate();
+    const along = distal.clone().addScaledVector(D, -distal.dot(D)).normalize(); // long axis, square to the barrel
+    const basisW = new THREE.Matrix4().makeBasis(D, along, new THREE.Vector3().crossVectors(D, along)).transpose();
     // the forearm, upper arm and shoulder bones are driven directly in hand space every frame
     const fore = B('forearm.l'), bicep = B('bicep.l'), shoulder = B('shoulder.l');
     const lenF = wrist.position.length() * S, lenB = fore.position.length() * S, lenS = bicep.position.length() * S;
     for (const b of [fore, bicep, shoulder]) { hand.add(b); b.scale.setScalar(S); }
     hand.add(gltf.scene);
-    return { radius, q, p, wrist, fore, bicep, shoulder, lenF, lenB, lenS };
+    return { radius, q, qInv: q.clone().invert(), centre: C.clone().multiplyScalar(S), basisW, thumb: side.clone().applyQuaternion(q),
+      wrist, fore, bicep, shoulder, lenF, lenB, lenS };
   }
 
   function circumcircle(a, b, c) { // centre and radius of the circle through three points
@@ -797,7 +917,7 @@ async function start() {
   const key = new THREE.DirectionalLight(0xfff0dc, 0.1); key.position.set(0.6, 1.2, 0.8);
   const rim = new THREE.DirectionalLight(0xfff0dc, 1.1); rim.position.set(0.5, 0.9, -1);
   handScene.add(key, rim);
-  const HEAD = new THREE.Vector3(0, 0, 0.145); // lens, in torch space
+  const HEAD = new THREE.Vector3(0, 0, 0.068); // lens, in torch space
 
   // ---------- layout (resize, rotation, iframe resize) ----------
   const L = { W: 1, H: 1, cols: 1, rows: 1, cell: 8, offX: 0, offY: 0, w: 1, h: 1 };
@@ -836,10 +956,10 @@ async function start() {
     const insetL = parseFloat(cs.paddingLeft) || 0, insetB = parseFloat(cs.paddingBottom) || 0;
     const { w, h } = L, portrait = w < h;
     const tanV = Math.tan(camera.fov * DEG / 2), tanH = tanV * camera.aspect, d = 0.42;
-    const px = portrait ? Math.min(h * 0.26, w * 0.34) : Math.min(h * 0.3, w * 0.4); // on-screen size of fist + torch
+    const px = portrait ? Math.min(h * 0.3, w * 0.44) : Math.min(h * 0.42, w * 0.4); // on-screen size of fist + torch
     hand.scale.setScalar((px / h) * 2 * d * tanV / 0.16);
-    const nx = -1 + 2 * (insetL + w * (portrait ? 0.26 : 0.2)) / w;
-    const ny = -1 + 2 * (insetB + h * (portrait ? 0.2 : 0.24)) / h;
+    const nx = -1 + 2 * (insetL + w * (portrait ? 0.4 : 0.37)) / w; // low, a little left of centre
+    const ny = -1 + 2 * (insetB + h * (portrait ? 0.22 : 0.26)) / h;
     hand.position.set(nx * tanH * d, ny * tanV * d, -d);
   }
 
@@ -878,22 +998,43 @@ async function start() {
   new ResizeObserver(() => layout()).observe(canvas);
   layout();
 
-  // ---------- aiming ----------
-  const aim = new THREE.Vector2(0.08, -0.32), aimGoal = aim.clone();
+  // ---------- looking: tap turns the view (and the torch with it) toward that point, drag keeps turning ----------
+  // Like a first-person game: the camera turns, the hand stays where it is on screen and the beam lands mid-screen.
+  // The walk itself always follows the tunnel. After a few idle seconds the view drifts back to rest.
+  const YAW_MAX = 75 * DEG, PITCH_MIN = -35 * DEG, PITCH_MAX = 45 * DEG, PITCH_REST = -8 * DEG;
+  const look = { yaw: 0, pitch: PITCH_REST, yawGoal: 0, pitchGoal: PITCH_REST, idle: 99, rest: 0 };
   const dir = new THREE.Vector3(), target = new THREE.Vector3(), local = new THREE.Vector3(), head = new THREE.Vector3();
-  let pressing = false, touched = false;
-  function aimAt(e) {
+  const qInv = new THREE.Quaternion();
+  let pressing = false, touched = false, lastX = 0, lastY = 0;
+  const clampLook = () => {
+    look.yawGoal = THREE.MathUtils.clamp(look.yawGoal, -YAW_MAX, YAW_MAX);
+    look.pitchGoal = THREE.MathUtils.clamp(look.pitchGoal, PITCH_MIN, PITCH_MAX);
+  };
+  function lookAtPointer(e) { // aim the view at the point under the pointer, as the camera stands now
     const r = canvas.getBoundingClientRect();
     const fx = (e.clientX - r.left) / r.width, fy = 1 - (e.clientY - r.top) / r.height;
-    aimGoal.set(((fx * L.W + L.offX) / (L.cols * L.cell)) * 2 - 1, ((fy * L.H + L.offY) / (L.rows * L.cell)) * 2 - 1);
+    const tanV = Math.tan(camera.fov * DEG / 2);
+    const sx = ((fx * L.W + L.offX) / (L.cols * L.cell)) * 2 - 1, sy = ((fy * L.H + L.offY) / (L.rows * L.cell)) * 2 - 1;
+    dir.set(sx * tanV * camera.aspect, sy * tanV, -1).normalize().applyQuaternion(camera.quaternion);
+    look.yawGoal = Math.atan2(-dir.x, -dir.z);
+    look.pitchGoal = Math.asin(dir.y);
+    clampLook();
   }
   canvas.addEventListener('pointerdown', (e) => {
     pressing = touched = true;
     canvas.setPointerCapture(e.pointerId);
-    aimAt(e);
+    lastX = e.clientX; lastY = e.clientY; look.idle = 0;
+    lookAtPointer(e);
     if (!msg.hidden) { msg.classList.add('off'); setTimeout(() => { msg.hidden = true; }, 1300); }
   });
-  canvas.addEventListener('pointermove', (e) => { if (pressing) aimAt(e); });
+  canvas.addEventListener('pointermove', (e) => {
+    if (!pressing) return;
+    const perPx = (2 * Math.atan(Math.tan(camera.fov * DEG / 2))) / canvas.clientHeight; // radians per CSS pixel
+    look.yawGoal -= (e.clientX - lastX) * perPx; // drag right, turn right
+    look.pitchGoal += (lastY - e.clientY) * perPx;
+    lastX = e.clientX; lastY = e.clientY; look.idle = 0;
+    clampLook();
+  });
   const release = () => { pressing = false; };
   canvas.addEventListener('pointerup', release);
   canvas.addEventListener('pointercancel', release);
@@ -917,7 +1058,7 @@ async function start() {
   }
 
   // ---------- loop (paused when hidden or scrolled out of an embedding page) ----------
-  let walked = START, fade = 0, last = 0, raf = 0, running = false, visible = !document.hidden, onScreen = true;
+  let walked = START, lift = 0, fade = 0, last = 0, raf = 0, running = false, visible = !document.hidden, onScreen = true;
   function frame(now) {
     raf = requestAnimationFrame(frame);
     const dt = Math.min(0.1, (now - last) / 1000 || 0);
@@ -925,32 +1066,52 @@ async function start() {
     const speed = PAUSE ? 0 : reducedMotion.matches ? SPEED * 0.35 : SPEED;
     walked += speed * dt;
     camera.position.z = -walked;
-    if (BOB) {
-      const phase = walked / 0.75 * Math.PI * 2;
-      camera.position.y = EYE + Math.sin(phase) * 0.022;
-      camera.position.x = Math.sin(phase / 2) * 0.012;
-    }
-    for (const seg of segments) if (seg.z0 > camera.position.z + 1) { seg.z0 -= SEGS * SEG_L; buildSegment(seg); }
+    const phase = walked / 0.75 * Math.PI * 2;
+    if (BOB) camera.position.x = Math.sin(phase / 2) * 0.012;
+    // one segment is kept behind the eye, so turning to look sideways never finds the walls gone
+    for (const seg of segments) if (seg.z0 > camera.position.z + 1 + SEG_L) { seg.z0 -= SEGS * SEG_L; buildSegment(seg); }
     // outdoors only while a walkway slot is among the built ones; the lid closes the tunnel where the walls stop
     let zone = -1, far = segments[0];
     for (const seg of segments) { if (seg.walk) zone = Math.floor(slot(seg) / CYCLE); if (seg.z0 < far.z0) far = seg; }
     outPass.enabled = zone >= 0 && !pmndrs;
     if (zone >= 0) outside.position.z = zoneExit(zone);
+    // climb the walkway's steps: the eye follows the deck with a short lag, like stepping up
+    const zl = zone >= 0 ? camera.position.z - zoneExit(zone) : 1;
+    lift += (deckY(zl) - lift) * (1 - Math.exp(-dt / 0.12));
+    // at rest the view turns toward the feed tower while on the walkway (so a phone held upright sees it too)
+    look.rest = zl < WALK_A + 4 && zl > DISH.z - 4 ? THREE.MathUtils.clamp(Math.atan2(-DISH.x, zl - DISH.z), -60 * DEG, 0) : 0;
+    camera.position.y = EYE + lift + (BOB ? Math.sin(phase) * 0.022 : 0);
     cap.visible = !far.walk;
     cap.position.z = far.z0;
     sky.position.copy(camera.position);
 
-    aim.lerp(aimGoal, 1 - Math.exp(-dt / 0.08)); // ~0.25 s to settle
-    const tanV = Math.tan(camera.fov * DEG / 2);
-    dir.set(aim.x * tanV * camera.aspect, aim.y * tanV, -1).normalize();
+    look.idle += dt;
+    if (look.idle > 3.5 && !pressing) { // drift back to rest: straight ahead in the tunnel, toward the mirror outside
+      const k = 1 - Math.exp(-dt / 1.2);
+      look.yawGoal += (look.rest - look.yawGoal) * k;
+      look.pitchGoal += (PITCH_REST - look.pitchGoal) * k;
+    }
+    const prevYaw = look.yaw, s = 1 - Math.exp(-dt / 0.09); // about 0.3 s to settle
+    look.yaw += (look.yawGoal - look.yaw) * s;
+    look.pitch += (look.pitchGoal - look.pitch) * s;
+    camera.rotation.set(look.pitch, look.yaw, 0, 'YXZ');
+    camera.updateMatrixWorld();
+    // the hand lags a touch behind fast turns, like a held weapon
+    hand.rotation.y = THREE.MathUtils.clamp((look.yaw - prevYaw) / Math.max(dt, 1e-3) * -0.05, -0.12, 0.12);
+    dir.set(0, 0, -1).applyQuaternion(camera.quaternion); // the beam lands where the view is centred
     target.copy(camera.position).addScaledVector(dir, hitTunnel(camera.position, dir));
-    local.copy(target).sub(camera.position);   // hand space = camera space (the camera never rotates)
+    local.copy(target).sub(camera.position).applyQuaternion(qInv.copy(camera.quaternion).invert()); // into hand space
     hand.updateMatrixWorld();
     torch.lookAt(local);
     if (grip) {
-      wristQ.copy(torch.quaternion).multiply(grip.q);                 // wrist pose in hand space, set by the torch
-      wristPos.copy(grip.p).applyQuaternion(torch.quaternion);
-      dirV.copy(wristPos).sub(ELBOW).normalize();
+      // turn the hand about the barrel so its long axis follows the forearm: barrel -> aim, long axis -> forearm
+      barrel.set(0, 0, 1).applyQuaternion(torch.quaternion);
+      across.copy(FORE).addScaledVector(barrel, -FORE.dot(barrel)).normalize();
+      basisH.makeBasis(barrel, across, zV.crossVectors(barrel, across)).multiply(grip.basisW);
+      wristQ.setFromRotationMatrix(basisH);
+      torch.quaternion.copy(wristQ).multiply(grip.qInv); // same aim, rolled with the hand
+      wristPos.copy(grip.centre).applyQuaternion(wristQ).negate();
+      dirV.copy(wristPos).sub(ELBOW).normalize(); // elbow -> wrist
       // forearm along dirV, twisted to match the hand so the wrist doesn't wring
       handX.set(1, 0, 0).applyQuaternion(wristQ);
       handX.addScaledVector(dirV, -handX.dot(dirV)).normalize();
@@ -964,7 +1125,7 @@ async function start() {
       grip.shoulder.position.copy(grip.bicep.position).addScaledVector(SHOULDER_TO_ELBOW, -grip.lenS);
     }
     torch.updateMatrixWorld();
-    head.copy(HEAD).applyMatrix4(torch.matrixWorld).add(camera.position);
+    head.copy(HEAD).applyMatrix4(torch.matrixWorld).applyQuaternion(camera.quaternion).add(camera.position);
     beam.position.copy(head); spill.position.copy(head); bounce.position.copy(camera.position);
     beam.target.position.copy(target); spill.target.position.copy(target);
     beam2.position.copy(head); spill2.position.copy(head); beam2.target.position.copy(target); spill2.target.position.copy(target);
