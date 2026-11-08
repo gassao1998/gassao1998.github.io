@@ -1,5 +1,8 @@
 # Changelog
 
+## 2026-11-08（第十版）
+- `ascii-cave/` 換成第十版（原始碼 repo `fb57dcb`）：6 張不是畫在牆上的塗鴉去背、改成透明 PNG（`make-love`、`protect-trans`、`shutter`、`tugan`、`fuck-you`、`scam`，同名 JPG 刪掉），`card.jpg` 補成牆面；「Protect trans Kids」照原筆跡補完最後的 s。手電筒改成銀色，食指指節提亮、小指尖收短。`assets/hand/hand.png` 與預覽圖換新。
+
 ## 2026-11-08（第九版）
 - `ascii-cave/` 換成第九版（原始碼 repo `9479c2a`）：前臂照手繪的方向往左下延伸、拳頭往回收三分之一；雷達碟身往走道這側傾 30°，碗口朝走道、遠側抬高靠山坡撐住，吊塔維持垂直，走道上停下時的回正視角改成略往上看；出洞往走道前的隧道右牆貼了一張做舊的海報（新增 `assets/graffiti/poster.jpg`）。`assets/hand/hand.png` 與預覽圖換新。
 

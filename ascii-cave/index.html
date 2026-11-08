@@ -89,6 +89,8 @@ async function start() {
     'green', 'pillar', 'scam', 'mos-erevan', 'suka', 'gey', 'throw-green', 'green-saints', 'shutter',
     'tugan', 'underpass-l', 'underpass-cat', 'underpass-teal', 'underpass-lilac', 'make-love', 'protect-trans', 'portal-red',
     'portal-tags', 'orange', 'tasma', 'fuck-you', 'column', 'card', 'kiss', 'eyes'];
+  // paint lifted off rock, a shutter, tiles or white plaster: PNG with only the strokes opaque, so it sits on the wall
+  const KEYED = new Set(['make-love', 'protect-trans', 'shutter', 'tugan', 'fuck-you', 'scam']);
   const START = Math.max(0, Number(params.get('at')) || 0); // ?at=metres starts further in; ?pause=1 stands still
   const PAUSE = params.get('pause') === '1';
   const BOB = params.get('bob') === '1';
@@ -212,7 +214,7 @@ async function start() {
   const images = (await Promise.all(GRAFFITI.map(async (name) => {
     const img = new Image();
     img.crossOrigin = 'anonymous'; // opened from file:// the pictures fail to load instead of breaking WebGL
-    img.src = `assets/graffiti/${name}.jpg`;
+    img.src = `assets/graffiti/${name}.${KEYED.has(name) ? 'png' : 'jpg'}`;
     try { await img.decode(); return { name, img }; } catch { return null; }
   }))).filter(Boolean);
   const AW = 2048, PAD = 4;
