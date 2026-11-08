@@ -550,13 +550,16 @@ async function start() {
     outside.add(new THREE.Mesh(g, new THREE.MeshStandardMaterial({ vertexColors: true, roughness: 1 })));
   }
   { // the mirror: a spherical bowl of square panels, a few missing or rusty, in a white rim with a red band
-    const theta = Math.asin(DISH.r / DISH.R), cols = 120, rings = 16;
-    const tex = canvasTex(1024, 256, (g, w, h) => {
+    const theta = Math.asin(DISH.r / DISH.R), rings = 16;
+    const tex = canvasTex(1024, 256, (g, w, h) => { // concentric rings of square panels: fewer per ring toward the centre
       g.fillStyle = '#222'; g.fillRect(0, 0, w, h);
-      for (let j = 0; j < rings; j++) for (let i = 0; i < cols; i++) {
-        const q = hash(i * 7.1 + j * 131.7), x0 = (i * w) / cols, y0 = (j * h) / rings;
-        g.fillStyle = q < 0.04 ? '#141414' : q < 0.12 ? shade(150, 96, 70, 0.8 + q) : shade(206, 208, 204, 0.8 + 0.25 * hash(i + j * 97));
-        g.fillRect(x0 + 1, y0 + 1, w / cols - 2, h / rings - 2);
+      for (let j = 0; j < rings; j++) { // row 0 is the rim, the last row the centre
+        const cols = Math.max(6, Math.round(130 * (1 - (j + 0.5) / rings)));
+        for (let i = 0; i < cols; i++) {
+          const q = hash(i * 7.1 + j * 131.7), x0 = (i * w) / cols, y0 = (j * h) / rings;
+          g.fillStyle = q < 0.03 ? '#141414' : q < 0.08 ? shade(150, 96, 70, 0.8 + q) : shade(206, 208, 204, 0.8 + 0.25 * hash(i + j * 97));
+          g.fillRect(x0 + 1, y0 + 1, w / cols - 2, h / rings - 2);
+        }
       }
     }, [1, 1]);
     const dish = new THREE.Mesh(new THREE.SphereGeometry(DISH.R, 120, 16, 0, TAU, Math.PI - theta, theta),
@@ -568,7 +571,16 @@ async function start() {
     const band = new THREE.Mesh(new THREE.CylinderGeometry(DISH.r + 0.62, DISH.r + 0.62, 0.22, 120, 1, true),
       new THREE.MeshStandardMaterial({ color: 0x8a2a1c, roughness: 0.8, side: THREE.DoubleSide }));
     band.position.set(DISH.x, RIM_Y + 0.8, DISH.z);
-    outside.add(dish, rim, band);
+    // the dark water stain near the bottom of the bowl, a ragged patch laid on the panels
+    const stain = new THREE.CircleGeometry(1, 40).rotateX(-Math.PI / 2), sp = stain.attributes.position.array;
+    for (let i = 0; i < sp.length; i += 3) {
+      const a = Math.atan2(sp[i + 2], sp[i]), k = Math.hypot(sp[i], sp[i + 2]);
+      const rr = k * (3.2 + 1.3 * simplex.noise(Math.cos(a) * 1.5, Math.sin(a) * 1.5));
+      sp[i] = DISH.x - 3.5 + Math.cos(a) * rr; sp[i + 2] = DISH.z + 2 + Math.sin(a) * rr * 1.3;
+      sp[i + 1] = dishY(Math.hypot(sp[i] - DISH.x, sp[i + 2] - DISH.z)) + 0.04;
+    }
+    outside.add(dish, rim, band, new THREE.Mesh(stain, new THREE.MeshStandardMaterial({
+      color: 0x262624, roughness: 0.9, transparent: true, opacity: 0.8, polygonOffset: true, polygonOffsetFactor: -2 })));
   }
   { // steelwork: white centre tower and feed cabin, rust arch over the bowl, two rust towers, the walkway itself
     const white = [], rust = [], rails = [], dark = [], q = new THREE.Quaternion(), d = new THREE.Vector3();
@@ -589,31 +601,58 @@ async function start() {
         beam(list, corner((k + 1) % 4, y), corner(k, y1), t * 0.5);
       }
     };
-    // the feed tower (IMG_7378): white lattice like an hourglass, narrow at the waist where the arches hold it,
-    // a tall cylindrical cage above and a cap on top
-    const base = dishY(0), waist = RIM_Y + 4, cage = waist + 6, top = cage + 10;
-    const radius = (y) => y < waist ? 2.6 + (0.9 - 2.6) * (y - base) / (waist - base) : y < cage ? 0.9 + (2.3 - 0.9) * (y - waist) / (cage - waist) : 2.3;
-    const ringAt = (y, k) => { const a = (k / 8) * TAU, r = radius(y); return V(DISH.x + Math.cos(a) * r, y, DISH.z + Math.sin(a) * r); };
-    for (let y = base; y < top - 0.01; y += 1.6) {
-      const y1 = Math.min(top, y + 1.6);
-      for (let k = 0; k < 8; k++) {
-        beam(white, ringAt(y, k), ringAt(y1, k), 0.14);                      // posts
-        beam(white, ringAt(y1, k), ringAt(y1, k + 1), 0.1);                  // ring
-        beam(white, ringAt(y, k), ringAt(y1, k + 1), 0.07);                  // diagonal
+    // the feed tower (IMG_7383-7385) hangs from a ring joint a little above the rim: above it a short neck, a lattice
+    // body widening upward and the lantern cage on top; below it a lattice section narrowing down to a white drum that
+    // hangs clear of the bowl. Three legs meet at the joint, 120 deg apart: two bowed white lattice legs landing on the
+    // bowl, and a straight rusty box truss running down to the rim on the walkway's side
+    const at = (r, a, y) => V(DISH.x + Math.cos(a) * r, y, DISH.z + Math.sin(a) * r);
+    const joint = RIM_Y + 1.5;
+    const ring = (list, y, r, n, t) => { for (let k = 0; k < n; k++) beam(list, at(r, (k / n) * TAU, y), at(r, ((k + 1) / n) * TAU, y), t); };
+    const column = (list, y0, y1, r0, r1, step, t) => { // hexagonal lattice column, radius r0 at y0 to r1 at y1
+      const rad = (y) => r0 + (r1 - r0) * (y - y0) / (y1 - y0);
+      for (let y = y0; y < y1 - 0.01; y += step) {
+        const yb = Math.min(y1, y + step);
+        for (let k = 0; k < 6; k++) {
+          const a0 = (k / 6) * TAU, a1 = ((k + 1) / 6) * TAU;
+          beam(list, at(rad(y), a0, y), at(rad(yb), a0, yb), t);              // posts
+          beam(list, at(rad(yb), a0, yb), at(rad(yb), a1, yb), t * 0.7);     // ring
+          beam(list, at(rad(y), a0, y), at(rad(yb), a1, yb), t * 0.45);      // diagonal
+        }
       }
-    }
-    white.push(new THREE.CylinderGeometry(0.2, 2.5, 2.4, 16).translate(DISH.x, top + 1.2, DISH.z));
-    // two white lattice arches across the bowl, rim to rim, crossing at the cage's foot
-    for (const a of [0.55, -0.55]) {
-      const dirA = V(Math.sin(a), 0, Math.cos(a));
-      const arc = (t, drop) => V(DISH.x + dirA.x * Math.cos(t) * DISH.r, RIM_Y + Math.sin(t) * (cage - RIM_Y) - drop, DISH.z + dirA.z * Math.cos(t) * DISH.r);
-      for (let i = 0; i < 40; i++) {
-        const t0 = (i / 40) * Math.PI, t1 = ((i + 1) / 40) * Math.PI;
-        beam(white, arc(t0, 0), arc(t1, 0), 0.22);
-        beam(white, arc(t0, 1.1), arc(t1, 1.1), 0.18);
-        beam(white, arc(t0, 0), arc(t1, 1.1), 0.08);
+    };
+    ring(white, joint, 1.7, 12, 0.35); ring(white, joint + 0.45, 1.7, 12, 0.25);                     // the ring joint
+    white.push(new THREE.CylinderGeometry(0.45, 0.6, 2.2, 12).translate(DISH.x, joint + 1.1, DISH.z));  // neck
+    column(white, joint + 2.2, joint + 10, 1.0, 1.6, 1.3, 0.12);                                      // body
+    column(white, joint + 10, joint + 13.5, 1.9, 1.9, 1.15, 0.12);                                    // lantern cage
+    ring(white, joint + 11.75, 2.05, 12, 0.18);
+    white.push(new THREE.CylinderGeometry(0.25, 1.4, 1.2, 12).translate(DISH.x, joint + 14.1, DISH.z),   // cap
+      new THREE.CylinderGeometry(0.12, 0.12, 1.6, 8).translate(DISH.x, joint + 15.5, DISH.z));          // mast
+    column(white, joint - 5, joint, 0.75, 0.95, 1.25, 0.11);                                          // lower section
+    white.push(new THREE.CylinderGeometry(1.1, 1.1, 1.8, 18).translate(DISH.x, joint - 5.9, DISH.z),     // drum
+      new THREE.CylinderGeometry(1.1, 1.45, 0.7, 18).translate(DISH.x, joint - 7.15, DISH.z));           // its flared foot
+    // the rusty leg lands on the rim on the walkway's side, where it comes in toward you along your line of sight as you
+    // walk up and look across at the tower (as in the photos); the white legs at +-120 deg from it
+    const aRust = Math.PI - 0.62;
+    const truss = (list, path, n, half, t) => { // box truss along path(u), u 0..1: four chords, rungs and diagonals
+      const pts = [];
+      for (let i = 0; i <= n; i++) {
+        const u = i / n, p = path(u), tan = path(Math.min(1, u + 0.01)).sub(path(Math.max(0, u - 0.01))).normalize();
+        const s = new THREE.Vector3().crossVectors(tan, Y_AXIS).normalize(), up = new THREE.Vector3().crossVectors(s, tan);
+        pts.push([[1, 1], [1, -1], [-1, -1], [-1, 1]].map(([a, b]) => p.clone().addScaledVector(s, a * half).addScaledVector(up, b * half)));
       }
+      for (let i = 0; i < n; i++) for (let k = 0; k < 4; k++) {
+        beam(list, pts[i][k], pts[i + 1][k], t);                                   // chord
+        beam(list, pts[i + 1][k], pts[i + 1][(k + 1) % 4], t * 0.6);               // rung
+        beam(list, pts[i][k], pts[i + 1][(k + 1) % 4], t * 0.4);                   // diagonal
+      }
+    };
+    for (const a of [aRust + TAU / 3, aRust - TAU / 3]) { // bowed white legs: out from the joint, then down onto the bowl
+      const hf = 11, yf = dishY(hf);
+      truss(white, (u) => { const w = u * Math.PI / 2; return at(1.7 + (hf - 1.7) * Math.sin(w), a, joint - (joint - yf) * (1 - Math.cos(w))); }, 22, 0.42, 0.13);
     }
+    const foot = at(DISH.r + 0.2, aRust, RIM_Y + 0.4), top = at(1.7, aRust, joint);
+    truss(rust, (u) => top.clone().lerp(foot, u), 22, 0.45, 0.13);                // straight rusty truss to the rim
+    for (let i = 3; i < 22; i += 5) truss(white, (u) => top.clone().lerp(foot, (i + u) / 22), 1, 0.47, 0.13); // flaking white patches
     for (const [x, z] of [[DISH.x + 34, DISH.z - 22], [DISH.x - 2, DISH.z - 36]]) {
       lattice(rust, x, z, groundY(x, z) - 0.5, 32, 2.6, 1.2, 2.6, 0.16);
     }
@@ -628,7 +667,7 @@ async function start() {
       beam(dark, V(0.6, yr, z), V(-0.6, top - 0.12, z), 0.08);
     }
     const mat = (color, rough) => new THREE.MeshStandardMaterial({ color, roughness: rough, metalness: 0.3 });
-    outside.add(new THREE.Mesh(mergeGeometries(white), mat(0xd6d4cc, 0.6)), new THREE.Mesh(mergeGeometries(rust), mat(0x7a3a18, 0.8)),
+    outside.add(new THREE.Mesh(mergeGeometries(white), mat(0xe2e0d8, 0.6)), new THREE.Mesh(mergeGeometries(rust), mat(0x6b3a22, 0.85)),
       new THREE.Mesh(mergeGeometries(dark), mat(0x2c2c2e, 0.8)));
     // the brick-red laboratory block on the rim, rows of big dark windows facing the walkway
     const facade = canvasTex(256, 160, (g, w, h) => {
@@ -800,22 +839,21 @@ async function start() {
   const alongZ = (geo) => geo.rotateX(Math.PI / 2);
   const grip = await gripArm(); // CC0 wrad-arms viewmodel rig, left arm posed round the barrel; null if it can't load
   const RB = grip ? grip.radius : 0.016;
-  // a short EDC torch (11 cm): the tail and its ring just show below the little finger, the head and switch
-  // stand out of the thumb web
-  part(alongZ(new THREE.CylinderGeometry(RB, RB, 0.08, 20)), metal, 0, 0, -0.005);           // barrel
-  part(alongZ(new THREE.CylinderGeometry(RB + 0.007, RB, 0.03, 20)), metal, 0, 0, 0.05);     // head
-  part(new THREE.TorusGeometry(RB + 0.006, 0.003, 8, 24), chrome, 0, 0, 0.066);             // bezel
-  part(new THREE.TorusGeometry(RB, 0.0025, 8, 24), chrome, 0, 0, -0.045);                    // tail ring
-  // the tail switch with its green light faces back at you out of the bottom of the fist, toward the thumb side
-  const ledAt = grip ? grip.thumb.clone().multiplyScalar(RB * 0.45).setZ(-0.047) : new THREE.Vector3(0, 0, -0.047);
-  const led = part(new THREE.SphereGeometry(0.0055, 12, 8), new THREE.MeshBasicMaterial({ color: new THREE.Color(0.35, 4, 0.9) }), ledAt.x, ledAt.y, ledAt.z);
+  // a short EDC torch: the tail just shows below the little finger; the switch (green light) on top and the head
+  // stand out of the thumb web, in front of the thumb tip, as in the reference photo
+  const zIndex = grip ? grip.indexZ : 0.02, zPinky = grip ? grip.pinkyZ : -0.02, zThumb = grip ? grip.thumbZ : 0.03;
+  const zLed = Math.max(zIndex + 0.011, zThumb + 0.012), zTail = zPinky - 0.022, zHead = zLed + 0.012;
+  part(alongZ(new THREE.CylinderGeometry(RB, RB, zHead - zTail, 20)), metal, 0, 0, (zHead + zTail) / 2); // barrel
+  part(alongZ(new THREE.CylinderGeometry(RB + 0.007, RB, 0.03, 20)), metal, 0, 0, zHead + 0.015);         // head
+  part(new THREE.TorusGeometry(RB + 0.006, 0.003, 8, 24), chrome, 0, 0, zHead + 0.031);                  // bezel
+  part(new THREE.TorusGeometry(RB, 0.0025, 8, 24), chrome, 0, 0, zTail);                                  // tail ring
+  const led = part(new THREE.SphereGeometry(0.0055, 12, 8), new THREE.MeshBasicMaterial({ color: new THREE.Color(0.35, 4, 0.9) }),
+    0, RB + 0.003, zLed);
   // arm held straight out: the forearm reaches the wrist from a reference elbow low on the left and behind,
   // so it comes in foreshortened from the bottom-left corner; the upper arm continues on out of sight
-  const ELBOW = new THREE.Vector3(-0.28, -0.32, 0.25), SHOULDER_TO_ELBOW = new THREE.Vector3(0.3, 0.45, -0.84).normalize();
-  const FORE = ELBOW.clone().negate().normalize(); // elbow -> grip, in hand space
+  const SHOULDER_AT = new THREE.Vector3(-0.45, -0.75, 0.75); // in hand space: low on the left, level with the eye
   const Y = new THREE.Vector3(0, 1, 0), wristPos = new THREE.Vector3(), wristQ = new THREE.Quaternion();
   const dirV = new THREE.Vector3(), handX = new THREE.Vector3(), zV = new THREE.Vector3(), basis = new THREE.Matrix4();
-  const barrel = new THREE.Vector3(), across = new THREE.Vector3(), basisH = new THREE.Matrix4(), handQInv = new THREE.Quaternion();
 
   async function gripArm() {
     const gltf = await new GLTFLoader().loadAsync('assets/models/arms.glb').catch(() => null);
@@ -855,40 +893,62 @@ async function start() {
       fit[f] = circumcircle(W(bones[0]), W(bones[1]), W(bones[2])); // the joint centres wrap the barrel
     }
     // barrel axis: diagonal across the palm, from the hypothenar heel out through the thumb web,
-    // 40 deg off the knuckle line toward the fingertips, through the middle of the curled fingers
-    const OBLIQUE = 40 * DEG;
+    // 50 deg off the knuckle line toward the fingertips, through the middle of the curled fingers
+    const OBLIQUE = 50 * DEG;
     const D = radial.clone().multiplyScalar(Math.cos(OBLIQUE)).addScaledVector(distal, Math.sin(OBLIQUE)).normalize();
     const C = fit.middle.centre.clone().add(fit.ring.centre).multiplyScalar(0.5);
     const meanR = (fit.index.radius + fit.middle.radius + fit.ring.radius + fit.pinky.radius) / 4;
     const radius = THREE.MathUtils.clamp(meanR * S - 0.01, 0.012, 0.02);
-    // thumb: swing it from the CMC so the tip lies on the barrel past the index finger, then MP 20 and IP 18
+    // the thumb side of the fist, square to the barrel, and the palm side (= distal x radial for a left hand)
+    const up = radial.clone().addScaledVector(D, -radial.dot(D)).normalize();
+    const palmar = new THREE.Vector3().crossVectors(D, up);
+    // thumb along the top of the barrel, tip a little to the palm side and 3 cm past the index finger: swing it from
+    // the CMC toward that point, bend MP 20 and IP 18, then swing once more so the bent tip lands on it
     const T = [1, 2, 3].map((k) => B(`finger_thumb${k}.l`));
-    const side = W(T[0]).sub(C); side.addScaledVector(D, -side.dot(D)).normalize();
-    const goal = C.clone().addScaledVector(D, fit.index.centre.clone().sub(C).dot(D) + 0.3)
-      .addScaledVector(side, radius / S + 0.09).applyMatrix4(wrist.matrixWorld);
-    const base = T[0].getWorldPosition(new THREE.Vector3());
-    const tip = new THREE.Vector3(0, 0.28, 0).applyMatrix4(T[2].matrixWorld);
-    const u = tip.sub(base).normalize(), v = goal.sub(base).normalize();
-    turn(T[0], new THREE.Vector3().crossVectors(u, v).normalize(), u.angleTo(v) / DEG);
+    const side = up.clone().multiplyScalar(0.92).addScaledVector(palmar, 0.38).normalize();
+    const indexAlong = fit.index.centre.clone().sub(C).dot(D), pinkyAlong = fit.pinky.centre.clone().sub(C).dot(D);
+    const goal = C.clone().addScaledVector(D, indexAlong + 0.08)
+      .addScaledVector(side, radius / S + 0.08).applyMatrix4(wrist.matrixWorld);
+    const tipNow = () => new THREE.Vector3(0, 0.28, 0).applyMatrix4(T[2].matrixWorld);
+    const swing = (target) => {
+      const base = T[0].getWorldPosition(new THREE.Vector3());
+      const u = tipNow().sub(base).normalize(), v = target.clone().sub(base).normalize();
+      if (u.angleTo(v) > 1e-4) turn(T[0], new THREE.Vector3().crossVectors(u, v).normalize(), u.angleTo(v) / DEG);
+    };
+    swing(goal);
     const towardAxis = side.clone().negate().transformDirection(wrist.matrixWorld);
     const tDir = T[2].getWorldPosition(new THREE.Vector3()).sub(T[1].getWorldPosition(new THREE.Vector3())).normalize();
     const tAxis = new THREE.Vector3().crossVectors(tDir, towardAxis).normalize();
-    turn(T[1], tAxis, 20);
-    turn(T[2], tAxis, 18);
-    // wrist frame -> torch space (barrel axis -> +Z); each frame the whole hand is then turned about the barrel
-    // so the hand's long axis lines up with the forearm, which keeps the wrist straight whatever the aim
-    const back = palm.clone().negate(); back.addScaledVector(D, -back.dot(D)).normalize();
-    const m0 = new THREE.Matrix4().makeBasis(D, back, new THREE.Vector3().crossVectors(D, back));
-    const Z = new THREE.Vector3(0, 0, 1), m1 = new THREE.Matrix4().makeBasis(Z, Y_AXIS, new THREE.Vector3(1, 0, 0).negate());
+    turn(T[1], tAxis, 30); // MP and IP bent a little more than the everyday 21 / 18 deg: the thumb presses on the barrel
+    turn(T[2], tAxis, 25);
+    // the bent thumb reaches a fixed distance from its base: find where that distance meets the line along the top
+    // of the barrel, and swing the tip onto it, so the thumb rests on the barrel instead of passing through it
+    {
+      const base = T[0].getWorldPosition(new THREE.Vector3()), reach = tipNow().distanceTo(base);
+      const lineAt = (t) => C.clone().addScaledVector(side, radius / S + 0.08).addScaledVector(D, t).applyMatrix4(wrist.matrixWorld);
+      let t = indexAlong + 0.08;
+      for (let k = 0; k < 40 && lineAt(t).distanceTo(base) < reach; k++) t += 0.05;  // walk forward until in reach
+      for (let k = 0; k < 20; k++) t -= (lineAt(t).distanceTo(base) - reach) * 0.8;  // then settle on it
+      swing(lineAt(t));
+    }
+    // wrist frame -> torch space: a sword grip on a neutral (handshake) forearm. Barrel axis -> +Z (toward the target),
+    // the thumb side of the fist square to it -> up, which leaves the palm facing the middle of the screen (torch -X)
+    // and the knuckles pointing forward and down round the barrel; the barrel leaves the fist through the thumb web
+    const m0 = new THREE.Matrix4().makeBasis(D, up, palmar);
+    const m1 = new THREE.Matrix4().makeBasis(new THREE.Vector3(0, 0, 1), new THREE.Vector3(0, 1, 0), new THREE.Vector3(-1, 0, 0));
     const q = new THREE.Quaternion().setFromRotationMatrix(m1.multiply(m0.transpose()));
-    const along = distal.clone().addScaledVector(D, -distal.dot(D)).normalize(); // long axis, square to the barrel
-    const basisW = new THREE.Matrix4().makeBasis(D, along, new THREE.Vector3().crossVectors(D, along)).transpose();
+    // the forearm's axis seen from the hand (docs/hand-anatomy.md): wrist ulnar-deviated so the beam runs out along the
+    // reaching arm, as in the reference photo (beam about 15 deg above the forearm), and a little extended
+    const ulnar = 35 * DEG, extension = 3 * DEG;
+    const foreAxis = distal.clone().multiplyScalar(Math.cos(ulnar)).addScaledVector(radial, Math.sin(ulnar)).normalize()
+      .multiplyScalar(Math.cos(extension)).addScaledVector(palmar, Math.sin(extension)).normalize(); // elbow -> wrist
+    const thumbTip = new THREE.Vector3(0, 0.28, 0).applyMatrix4(T[2].matrixWorld).applyMatrix4(toWrist).sub(C).applyQuaternion(q);
     // the forearm, upper arm and shoulder bones are driven directly in hand space every frame
     const fore = B('forearm.l'), bicep = B('bicep.l'), shoulder = B('shoulder.l');
     const lenF = wrist.position.length() * S, lenB = fore.position.length() * S, lenS = bicep.position.length() * S;
     for (const b of [fore, bicep, shoulder]) { hand.add(b); b.scale.setScalar(S); }
     hand.add(gltf.scene);
-    return { radius, q, qInv: q.clone().invert(), centre: C.clone().multiplyScalar(S), basisW, thumb: side.clone().applyQuaternion(q),
+    return { radius, q, centre: C.clone().multiplyScalar(S), foreAxis, indexZ: indexAlong * S, pinkyZ: pinkyAlong * S, thumbZ: thumbTip.z * S,
       wrist, fore, bicep, shoulder, lenF, lenB, lenS };
   }
 
@@ -917,7 +977,7 @@ async function start() {
   const key = new THREE.DirectionalLight(0xfff0dc, 0.1); key.position.set(0.6, 1.2, 0.8);
   const rim = new THREE.DirectionalLight(0xfff0dc, 1.1); rim.position.set(0.5, 0.9, -1);
   handScene.add(key, rim);
-  const HEAD = new THREE.Vector3(0, 0, 0.068); // lens, in torch space
+  const HEAD = new THREE.Vector3(0, 0, zHead + 0.033); // lens, in torch space
 
   // ---------- layout (resize, rotation, iframe resize) ----------
   const L = { W: 1, H: 1, cols: 1, rows: 1, cell: 8, offX: 0, offY: 0, w: 1, h: 1 };
@@ -945,7 +1005,8 @@ async function start() {
     // same tunnel framing in both orientations: aim for ~44 deg across, within 50-78 deg vertically
     const aspect = cols / rows;
     camera.aspect = handCamera.aspect = aspect;
-    camera.fov = handCamera.fov = THREE.MathUtils.clamp(2 * Math.atan(Math.tan(22 * DEG) / aspect) / DEG, 50, 78);
+    camera.fov = THREE.MathUtils.clamp(2 * Math.atan(Math.tan(22 * DEG) / aspect) / DEG, 50, 78);
+    handCamera.fov = camera.fov * 0.8; // a narrower view-model lens, as FPS games do, so the near forearm isn't blown up
     camera.updateProjectionMatrix();
     handCamera.updateProjectionMatrix();
     placeHand();
@@ -955,11 +1016,11 @@ async function start() {
     const cs = getComputedStyle(safeProbe);
     const insetL = parseFloat(cs.paddingLeft) || 0, insetB = parseFloat(cs.paddingBottom) || 0;
     const { w, h } = L, portrait = w < h;
-    const tanV = Math.tan(camera.fov * DEG / 2), tanH = tanV * camera.aspect, d = 0.42;
-    const px = portrait ? Math.min(h * 0.3, w * 0.44) : Math.min(h * 0.42, w * 0.4); // on-screen size of fist + torch
+    const tanV = Math.tan(handCamera.fov * DEG / 2), tanH = tanV * handCamera.aspect, d = 0.42;
+    const px = portrait ? Math.min(h * 0.26, w * 0.44) : Math.min(h * 0.32, w * 0.3); // on-screen size of fist + torch
     hand.scale.setScalar((px / h) * 2 * d * tanV / 0.16);
-    const nx = -1 + 2 * (insetL + w * (portrait ? 0.4 : 0.37)) / w; // low, a little left of centre
-    const ny = -1 + 2 * (insetB + h * (portrait ? 0.22 : 0.26)) / h;
+    const nx = -1 + 2 * (insetL + w * (portrait ? 0.4 : 0.36)) / w; // low, a little left of centre
+    const ny = -1 + 2 * (insetB + h * (portrait ? 0.22 : 0.2)) / h;
     hand.position.set(nx * tanH * d, ny * tanV * d, -d);
   }
 
@@ -1002,7 +1063,7 @@ async function start() {
   // Like a first-person game: the camera turns, the hand stays where it is on screen and the beam lands mid-screen.
   // The walk itself always follows the tunnel. After a few idle seconds the view drifts back to rest.
   const YAW_MAX = 75 * DEG, PITCH_MIN = -35 * DEG, PITCH_MAX = 45 * DEG, PITCH_REST = -8 * DEG;
-  const look = { yaw: 0, pitch: PITCH_REST, yawGoal: 0, pitchGoal: PITCH_REST, idle: 99, rest: 0 };
+  const look = { yaw: 0, pitch: PITCH_REST, yawGoal: 0, pitchGoal: PITCH_REST, idle: 99, rest: 0, restPitch: PITCH_REST };
   const dir = new THREE.Vector3(), target = new THREE.Vector3(), local = new THREE.Vector3(), head = new THREE.Vector3();
   const qInv = new THREE.Quaternion();
   let pressing = false, touched = false, lastX = 0, lastY = 0;
@@ -1079,7 +1140,9 @@ async function start() {
     const zl = zone >= 0 ? camera.position.z - zoneExit(zone) : 1;
     lift += (deckY(zl) - lift) * (1 - Math.exp(-dt / 0.12));
     // at rest the view turns toward the feed tower while on the walkway (so a phone held upright sees it too)
-    look.rest = zl < WALK_A + 4 && zl > DISH.z - 4 ? THREE.MathUtils.clamp(Math.atan2(-DISH.x, zl - DISH.z), -60 * DEG, 0) : 0;
+    const byDish = zl < WALK_A + 4 && zl > DISH.z - 4;
+    look.rest = byDish ? THREE.MathUtils.clamp(Math.atan2(-DISH.x, zl - DISH.z), -60 * DEG, 0) : 0;
+    look.restPitch = byDish ? -16 * DEG : PITCH_REST; // looking down into the bowl from the rim, as in the photos
     camera.position.y = EYE + lift + (BOB ? Math.sin(phase) * 0.022 : 0);
     cap.visible = !far.walk;
     cap.position.z = far.z0;
@@ -1089,7 +1152,7 @@ async function start() {
     if (look.idle > 3.5 && !pressing) { // drift back to rest: straight ahead in the tunnel, toward the mirror outside
       const k = 1 - Math.exp(-dt / 1.2);
       look.yawGoal += (look.rest - look.yawGoal) * k;
-      look.pitchGoal += (PITCH_REST - look.pitchGoal) * k;
+      look.pitchGoal += (look.restPitch - look.pitchGoal) * k;
     }
     const prevYaw = look.yaw, s = 1 - Math.exp(-dt / 0.09); // about 0.3 s to settle
     look.yaw += (look.yawGoal - look.yaw) * s;
@@ -1102,27 +1165,26 @@ async function start() {
     target.copy(camera.position).addScaledVector(dir, hitTunnel(camera.position, dir));
     local.copy(target).sub(camera.position).applyQuaternion(qInv.copy(camera.quaternion).invert()); // into hand space
     hand.updateMatrixWorld();
-    torch.lookAt(local);
+    // the torch model is held tipped up 10 deg and out 4 deg, as in the reference photo, so the forearm rises into the
+    // fist from the lower left; the light itself still runs from the head to the target at the centre of the view
+    const reach = local.length();
+    torch.lookAt(local.x + reach * 0.07, local.y + reach * 0.18, local.z);
     if (grip) {
-      // turn the hand about the barrel so its long axis follows the forearm: barrel -> aim, long axis -> forearm
-      barrel.set(0, 0, 1).applyQuaternion(torch.quaternion);
-      across.copy(FORE).addScaledVector(barrel, -FORE.dot(barrel)).normalize();
-      basisH.makeBasis(barrel, across, zV.crossVectors(barrel, across)).multiply(grip.basisW);
-      wristQ.setFromRotationMatrix(basisH);
-      torch.quaternion.copy(wristQ).multiply(grip.qInv); // same aim, rolled with the hand
+      // hand and forearm move as one piece with the upright torch: the hand's pose in the torch is fixed (neutral
+      // forearm, palm to the right, thumb up), the forearm leaves the wrist along foreAxis, the wrist bone takes the
+      // small deviation between them, and the upper arm reaches back to a shoulder out of sight on the lower left
+      wristQ.copy(torch.quaternion).multiply(grip.q);
       wristPos.copy(grip.centre).applyQuaternion(wristQ).negate();
-      dirV.copy(wristPos).sub(ELBOW).normalize(); // elbow -> wrist
-      // forearm along dirV, twisted to match the hand so the wrist doesn't wring
-      handX.set(1, 0, 0).applyQuaternion(wristQ);
-      handX.addScaledVector(dirV, -handX.dot(dirV)).normalize();
-      basis.makeBasis(handX, dirV, zV.crossVectors(handX, dirV));
-      grip.fore.quaternion.setFromRotationMatrix(basis);
+      dirV.copy(grip.foreAxis).applyQuaternion(wristQ);                        // elbow -> wrist
+      handX.set(0, 1, 0).applyQuaternion(wristQ);                              // the wrist bone's own axis
+      grip.fore.quaternion.setFromUnitVectors(handX, dirV).multiply(wristQ);   // no twist between hand and forearm
       grip.fore.position.copy(wristPos).addScaledVector(dirV, -grip.lenF);
       grip.wrist.quaternion.copy(grip.fore.quaternion).invert().multiply(wristQ);
-      grip.bicep.quaternion.setFromUnitVectors(Y, SHOULDER_TO_ELBOW); // upper arm out of sight, down and behind
-      grip.bicep.position.copy(grip.fore.position).addScaledVector(SHOULDER_TO_ELBOW, -grip.lenB);
+      zV.copy(grip.fore.position).sub(SHOULDER_AT).normalize();               // shoulder -> elbow
+      grip.bicep.quaternion.setFromUnitVectors(Y, zV);
+      grip.bicep.position.copy(grip.fore.position).addScaledVector(zV, -grip.lenB);
       grip.shoulder.quaternion.copy(grip.bicep.quaternion);
-      grip.shoulder.position.copy(grip.bicep.position).addScaledVector(SHOULDER_TO_ELBOW, -grip.lenS);
+      grip.shoulder.position.copy(grip.bicep.position).addScaledVector(zV, -grip.lenS);
     }
     torch.updateMatrixWorld();
     head.copy(HEAD).applyMatrix4(torch.matrixWorld).applyQuaternion(camera.quaternion).add(camera.position);
