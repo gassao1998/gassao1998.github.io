@@ -89,8 +89,8 @@ async function start() {
     'green', 'pillar', 'scam', 'mos-erevan', 'suka', 'gey', 'throw-green', 'green-saints', 'shutter',
     'tugan', 'underpass-l', 'underpass-cat', 'underpass-teal', 'underpass-lilac', 'make-love', 'protect-trans', 'portal-red',
     'portal-tags', 'orange', 'tasma', 'fuck-you', 'column', 'card', 'kiss', 'eyes'];
-  // the slogan lifted off its boulder: PNG with only the strokes opaque, so it sits on the wall
-  const KEYED = new Set(['protect-trans']);
+  // paint lifted off rock, a shutter, tiles or white plaster: PNG with only the strokes opaque, so it sits on the wall
+  const KEYED = new Set(['make-love', 'protect-trans', 'shutter', 'tugan', 'fuck-you', 'scam']);
   const START = Math.max(0, Number(params.get('at')) || 0); // ?at=metres starts further in; ?pause=1 stands still
   const PAUSE = params.get('pause') === '1';
   const BOB = params.get('bob') === '1';
@@ -268,6 +268,7 @@ async function start() {
   let bag = [];
   const rand = (a, b) => a + Math.random() * (b - a);
   const nextPiece = () => { if (!bag.length) bag = others.slice().sort(() => Math.random() - 0.5); return bag.pop(); };
+  const PIN = pieces.find((p) => p.name === params.get('pin'));
 
   const segments = Array.from({ length: SEGS }, (_, k) => {
     const wall = new THREE.BufferGeometry();
@@ -336,7 +337,11 @@ async function start() {
     seg.nv = seg.ni = 0;
     const n = slot(seg), top = seg.z0 + SEG_L - rand(0.05, 0.6);
     const cat = special['cat-band'], sun = special['mural-sun'], dish = special['mural-dish'], poster = special.poster;
-    if (n % CYCLE === TUNNEL_SLOTS - 1 && poster) { // the last stretch before the walkway: the tour poster from ROT-54,
+    if (PIN && n === Math.floor(START / SEG_L)) { // ?pin=name: that piece on the right wall a few metres ahead (checks)
+      const H = 1.5, L = H * PIN.aspect, zc = seg.z0 + (SEG_L - L) / 2 - 2;
+      addDecal(seg, 1, 0.4, 0.4 + H, zc, zc + L, PIN, 1.2);
+      fill(seg, 1, zc + L + 0.4, top); fill(seg, 1, seg.z0 + 0.1, zc - 0.4); fill(seg, -1, seg.z0 + 0.1, top);
+    } else if (n % CYCLE === TUNNEL_SLOTS - 1 && poster) { // the last stretch before the walkway: the tour poster from ROT-54,
       const H = 1.7, L = H * poster.aspect, zc = seg.z0 + (SEG_L - L) / 2, y0 = 0.3; // person-sized, on the upright wall
       addDecal(seg, 1, y0, y0 + H, zc, zc + L, poster, 1.1);
       fill(seg, 1, zc + L + 0.5, top); fill(seg, 1, seg.z0 + 0.1, zc - 0.5); fill(seg, -1, seg.z0 + 0.1, top);

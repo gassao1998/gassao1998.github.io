@@ -1,5 +1,8 @@
 # Changelog
 
+## 2026-11-08（第十一版）
+- `ascii-cave/` 換成第十一版（原始碼 repo `abdf09f`）：塗鴉恢復去背版（6 張透明 PNG、`card.jpg` 補牆），字為主的幾張與太淡的幾張加強筆跡（加粗、壓深、提高對比或飽和），「Protect trans Kids」壓到近黑並加粗，TUGAN 的五芒星補回。頁面多一個截圖用的 `?pin=` 參數。
+
 ## 2026-11-08（第十版修正）
 - `ascii-cave/` 塗鴉改回去背前的版本（原始碼 repo `d12652a`）：`make-love`、`shutter`、`tugan`、`fuck-you`、`scam` 換回原本的 JPG、刪掉 PNG，`card.jpg` 換回原圖；只有 `protect-trans.png`（補完標語）保留。手與手電筒不動。
 
