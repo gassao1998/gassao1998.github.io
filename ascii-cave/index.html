@@ -502,13 +502,23 @@ async function start() {
   const DISH_CY = RIM_Y + Math.sqrt(DISH.R ** 2 - DISH.r ** 2);
   const dishY = (r) => DISH_CY - Math.sqrt(DISH.R ** 2 - Math.min(r, DISH.r) ** 2);
   const smooth = THREE.MathUtils.smoothstep;
+  // the dish leans a few degrees down toward the far left as seen from the walkway (IMG_7383-7385: the far rim lower on
+  // the left, the hanging tower plumb). Bowl, rim and the three legs tip about the point where the walkway passes the
+  // rim, so nothing moves there; the tower only shifts with the joint it hangs from; the ground round the rim follows
+  const TILT_DEG = 6, TILT_P = new THREE.Vector3(DISH.x - DISH.r, RIM_Y, DISH.z), TILT_D = new THREE.Vector3(1, 0, -1).normalize();
+  const TILT = new THREE.Matrix4().makeTranslation(TILT_P.x, TILT_P.y, TILT_P.z)
+    .multiply(new THREE.Matrix4().makeRotationAxis(new THREE.Vector3(TILT_D.z, 0, -TILT_D.x), TILT_DEG * DEG)) // up x TILT_D
+    .multiply(new THREE.Matrix4().makeTranslation(-TILT_P.x, -TILT_P.y, -TILT_P.z));
+  const tiltDrop = (x, z) => Math.sin(TILT_DEG * DEG) * (TILT_D.x * (x - TILT_P.x) + TILT_D.z * (z - TILT_P.z));
   function groundY(x, z) {
     const n1 = simplex.noise(x / 22, z / 22), n2 = simplex.noise(x / 7 + 30, z / 7);
     // the low ground the walkway crosses: a valley under it, rising on the left, a level apron round the dish
     let h = -8 + Math.max(0, -x - 4) * 0.32 + Math.max(0, Math.abs(x) - 90) * 0.4 + n1 * 2.2 + n2 * 0.5;
     const r = Math.hypot(x - DISH.x, z - DISH.z);
-    h += (RIM_Y - 0.25 - h) * (1 - smooth(r, DISH.r + 5, DISH.r + 22));
-    if (r < DISH.r + 0.6) h = Math.min(h, dishY(r) - 0.5);
+    const drop = tiltDrop(x, z);
+    h += (RIM_Y - drop - 0.25 - h) * (1 - smooth(r, DISH.r + 5, DISH.r + 22));
+    if (r < DISH.r + 0.6) h = Math.min(h, dishY(r) - drop - 0.5);
+    if (Math.abs(x) < 4.6 && z < WALK_A + 1 && z > WALK_B - 1) h = Math.min(h, deckY(z) - 0.3); // never through the deck
     // open, nearly level ground in front of each portal, at track height
     const open = Math.max(smooth(z, WALK_A - 6, WALK_A + 2), smooth(-z, -WALK_B - 6, -WALK_B + 2)) * (1 - smooth(Math.abs(x), 22, 40));
     h += (-0.15 + n2 * 0.08 - h) * open;
@@ -516,9 +526,10 @@ async function start() {
     const mound = Math.max(smooth(z, 0, 5), smooth(-z, WALK_L, WALK_L + 5)) * (1 - smooth(Math.abs(x), 8, 24));
     return h + Math.max(0, 7.5 + n1 * 1.5 - h) * mound;
   }
-  // no ground along the bridge (a dark drop under the deck) nor just behind the portal faces, where the
-  // mound's first slope would cut into the tunnel mouth (terrain rows fall exactly on both faces)
-  const inCorridor = (x, z) => Math.abs(x) < 4.6 && ((z < WALK_A + 1 && z > WALK_B - 1) || (z > 0 && z < 5) || (z < -WALK_L && z > -WALK_L - 5));
+  // no ground just behind the portal faces, where the mound's first slope would cut into the tunnel mouth (terrain
+  // rows fall exactly on both faces). Under the bridge the valley floor stays: without it, looking down past the deck's
+  // edge showed a black band of empty background between the railing and the deck
+  const inCorridor = (x, z) => Math.abs(x) < 4.6 && ((z > 0 && z < 5) || (z < -WALK_L && z > -WALK_L - 5));
   const outside = new THREE.Group(), Y_AXIS = new THREE.Vector3(0, 1, 0);
   outScene.add(outside);
   outScene.fog = new THREE.FogExp2(0x0d1426, 0.0045);
@@ -565,8 +576,8 @@ async function start() {
       new THREE.MeshStandardMaterial({ map: tex, side: THREE.BackSide, roughness: 0.5, metalness: 0.2 }));
     dish.position.set(DISH.x, DISH_CY, DISH.z);
     const concrete = new THREE.MeshStandardMaterial({ color: 0xb8b4aa, roughness: 0.9, side: THREE.DoubleSide });
-    const rim = new THREE.Mesh(new THREE.CylinderGeometry(DISH.r + 0.6, DISH.r + 0.9, 1.4, 120, 1, true), concrete);
-    rim.position.set(DISH.x, RIM_Y + 0.15, DISH.z);
+    const rim = new THREE.Mesh(new THREE.CylinderGeometry(DISH.r + 0.6, DISH.r + 1.1, 2.4, 120, 1, true), concrete);
+    rim.position.set(DISH.x, RIM_Y - 0.35, DISH.z); // a skirt below ground, so the side the tilt lifts shows no gap
     const band = new THREE.Mesh(new THREE.CylinderGeometry(DISH.r + 0.62, DISH.r + 0.62, 0.22, 120, 1, true),
       new THREE.MeshStandardMaterial({ color: 0x8a2a1c, roughness: 0.8, side: THREE.DoubleSide }));
     band.position.set(DISH.x, RIM_Y + 0.8, DISH.z);
@@ -578,8 +589,10 @@ async function start() {
       sp[i] = DISH.x - 3.5 + Math.cos(a) * rr; sp[i + 2] = DISH.z + 2 + Math.sin(a) * rr * 1.3;
       sp[i + 1] = dishY(Math.hypot(sp[i] - DISH.x, sp[i + 2] - DISH.z)) + 0.04;
     }
-    outside.add(dish, rim, band, new THREE.Mesh(stain, new THREE.MeshStandardMaterial({
-      color: 0x262624, roughness: 0.9, transparent: true, opacity: 0.8, polygonOffset: true, polygonOffsetFactor: -2 })));
+    const mirror = [dish, rim, band, new THREE.Mesh(stain, new THREE.MeshStandardMaterial({
+      color: 0x262624, roughness: 0.9, transparent: true, opacity: 0.8, polygonOffset: true, polygonOffsetFactor: -2 }))];
+    for (const m of mirror) m.applyMatrix4(TILT);
+    outside.add(...mirror);
   }
   { // steelwork: white centre tower and feed cabin, rust arch over the bowl, two rust towers, the walkway itself
     const white = [], rust = [], rails = [], dark = [], q = new THREE.Quaternion(), d = new THREE.Vector3();
@@ -619,6 +632,7 @@ async function start() {
         }
       }
     };
+    const tower0 = white.length;
     ring(white, joint, 1.7, 12, 0.35); ring(white, joint + 0.45, 1.7, 12, 0.25);                     // the ring joint
     white.push(new THREE.CylinderGeometry(0.45, 0.6, 2.2, 12).translate(DISH.x, joint + 1.1, DISH.z));  // neck
     column(white, joint + 2.2, joint + 10, 1.0, 1.6, 1.3, 0.12);                                      // body
@@ -629,6 +643,8 @@ async function start() {
     column(white, drumTop, joint, 0.75, 0.95, 1.25, 0.11);                                            // lower section
     white.push(new THREE.CylinderGeometry(1.1, 1.1, 1.8, 18).translate(DISH.x, drumTop - 0.9, DISH.z),   // drum
       new THREE.CylinderGeometry(1.1, 1.45, 0.7, 18).translate(DISH.x, drumTop - 2.15, DISH.z));         // its flared foot
+    const shift = V(DISH.x, joint, DISH.z).applyMatrix4(TILT).sub(V(DISH.x, joint, DISH.z));          // plumb, moved with the joint
+    for (const g of white.slice(tower0)) g.translate(shift.x, shift.y, shift.z);
     // the rusty leg lands on the rim on the walkway's side, where it comes in toward you along your line of sight as you
     // walk up and look across at the tower (as in the photos); the white legs at +-120 deg from it
     const aRust = Math.PI - 0.62;
@@ -647,6 +663,7 @@ async function start() {
     };
     // bowed white legs: out from the joint, then down onto the bowl. A broad quarter ellipse, about 2.7 times as wide as
     // it drops, the curve of the earlier rim-to-rim arches (27 m out for a 10 m rise); the feet land 22 m out
+    const legs0 = white.length, rust0 = rust.length;
     for (const a of [aRust + TAU / 3, aRust - TAU / 3]) {
       const hf = 22, yf = dishY(hf);
       truss(white, (u) => { const w = u * Math.PI / 2; return at(1.7 + (hf - 1.7) * Math.sin(w), a, joint - (joint - yf) * (1 - Math.cos(w))); }, 22, 0.42, 0.13);
@@ -654,6 +671,7 @@ async function start() {
     const foot = at(DISH.r + 0.2, aRust, RIM_Y + 0.4), top = at(1.7, aRust, joint);
     truss(rust, (u) => top.clone().lerp(foot, u), 22, 0.45, 0.13);                // straight rusty truss to the rim
     for (let i = 3; i < 22; i += 5) truss(white, (u) => top.clone().lerp(foot, (i + u) / 22), 1, 0.47, 0.13); // flaking white patches
+    for (const g of [...white.slice(legs0), ...rust.slice(rust0)]) g.applyMatrix4(TILT);             // the legs tip with the bowl
     for (const [x, z] of [[DISH.x + 34, DISH.z - 22], [DISH.x - 2, DISH.z - 36]]) {
       lattice(rust, x, z, groundY(x, z) - 0.5, 32, 2.6, 1.2, 2.6, 0.16);
     }
@@ -833,7 +851,7 @@ async function start() {
   // darkened and cooled for the tunnel, and outlined; the torch head is painted on. tools/trace_hand.py makes the PNG,
   // transparent everywhere outside the hand. It sits on a plane in front of the camera, in its own scene, so the
   // tunnel never hides it. Coordinates are the photo's pixels (3024 x 4032); the forearm runs on past its lower-left corner.
-  const HAND = { X0: -700, Y0: 2380, X1: 1700, Y1: 4600, FIST: [1400, 2760], FIST_W: 270, HEAD: [1495, 2450] };
+  const HAND = { X0: -700, Y0: 2380, X1: 1700, Y1: 4600, FIST: [1400, 2760], FIST_W: 270, HEAD: [1516, 2500] };
   const handTex = await new THREE.TextureLoader().loadAsync('assets/hand/hand.png').catch(() => null); // none from file://
   if (handTex) handTex.colorSpace = THREE.SRGBColorSpace;
   const hand = new THREE.Group(), headLocal = new THREE.Vector3();
