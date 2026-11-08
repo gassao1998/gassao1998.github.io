@@ -880,8 +880,9 @@ async function start() {
     const cs = getComputedStyle(safeProbe);
     const insetL = parseFloat(cs.paddingLeft) || 0, insetB = parseFloat(cs.paddingBottom) || 0;
     const { w, h } = L, portrait = w < h;
-    const s = (portrait ? Math.min(0.3 * w, 0.16 * h) : Math.min(0.17 * h, 0.12 * w)) / HAND.FIST_W; // CSS px per photo px
-    const fx = insetL + w * (portrait ? 0.48 : 0.42), fy = h * (portrait ? 0.72 : 0.68) - insetB;
+    // fist about a tenth of the screen height, the size of the earlier 3D hand; the photo only sets its shape
+    const s = (portrait ? Math.min(0.18 * w, 0.095 * h) : Math.min(0.1 * h, 0.07 * w)) / HAND.FIST_W; // CSS px per photo px
+    const fx = insetL + w * (portrait ? 0.5 : 0.44), fy = h * (portrait ? 0.76 : 0.72) - insetB;
     const left = fx - (HAND.FIST[0] - HAND.X0) * s, top = fy - (HAND.FIST[1] - HAND.Y0) * s;
     const tanV = Math.tan(handCamera.fov * DEG / 2), tanH = tanV * handCamera.aspect;
     const X = (px) => ((px / w) * 2 - 1) * tanH, Ypx = (py) => (1 - (py / h) * 2) * tanV; // screen -> plane at 1 m
