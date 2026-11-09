@@ -1,5 +1,8 @@
 # Changelog
 
+## 2026-11-09（第十四版）
+- `ascii-cave/` 換成第十四版（原始碼 repo `bc6bf0a`）：貓的塗鴉重新從影片抽線，背上那段改成影片裡天花板上實際看得到的色帶，不再用照形狀補畫的折線；頭下方誤收的箭頭拿掉。只換 `assets/graffiti/cat-band.jpg`。
+
 ## 2026-11-08（第十三版）
 - `ascii-cave/` 換成第十三版（原始碼 repo `0c87419`）：地毯改成 7 張原樣地毯（新增 `rug-stripes`、`rug-hexagons`、`rug-tan`），相鄰、對面不重複，地毯段縮成 12 公尺；走路時鏡頭與手預設微幅晃動（`?bob=0` 關）；手圖前臂下緣外側那條地板收掉（`assets/hand/hand.png` 換新）。
 
