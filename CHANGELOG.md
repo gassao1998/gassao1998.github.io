@@ -1,5 +1,8 @@
 # Changelog
 
+## 2026-11-09（第十六版）
+- `ascii-cave/` 換成第十六版（原始碼 repo `66ec2b1`）：貓改用手工拼好的整隻貓，白色輪廓、裡面塗黑，外面透明；天花板的埋線與燈拿掉。貼圖 `assets/graffiti/cat-band.jpg` 換成帶透明的 `cat-band.png`，頁面不再把深色轉透明。
+
 ## 2026-11-09（第十五版）
 - `ascii-cave/` 換成第十五版（原始碼 repo `06922de`）：貓身改取影片裡天花板上的細噴漆長弧，上一版誤當成貓背的折線色帶其實是天花板的埋線，拿掉。只換 `assets/graffiti/cat-band.jpg`。
 
