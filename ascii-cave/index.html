@@ -103,9 +103,9 @@ async function start() {
   const GRAFFITI = ['cat-band', 'mural-sun', 'mural-dish', 'poster', 'lilac', 'blue', 'bfd', 'code', 'yellow-e', 'love', 'fists',
     'green', 'pillar', 'scam', 'mos-erevan', 'suka', 'gey', 'throw-green', 'green-saints', 'shutter',
     'tugan', 'underpass-l', 'underpass-cat', 'underpass-teal', 'underpass-lilac', 'make-love', 'protect-trans', 'portal-red',
-    'portal-tags', 'orange', 'tasma', 'fuck-you', 'column', 'card', 'kiss', 'eyes'];
+    'portal-tags', 'orange', 'tasma', 'fuck-you', 'column', 'card', 'kiss', 'eyes', 'dance', 'angel-tiles', 'alone'];
   // paint lifted off rock, a shutter, tiles or white plaster: PNG with only the strokes opaque, so it sits on the wall
-  const KEYED = new Set(['cat-band', 'make-love', 'protect-trans', 'shutter', 'tugan', 'fuck-you', 'scam']);
+  const KEYED = new Set(['cat-band', 'make-love', 'protect-trans', 'shutter', 'tugan', 'fuck-you', 'scam', 'angel-tiles']);
   const START = Math.max(0, Number(params.get('at')) || 0); // ?at=metres starts further in; ?pause=1 stands still
   const PAUSE = params.get('pause') === '1';
   const BOB = params.get('bob') !== '0'; // a slight walking bob; ?bob=0 turns it off, and reduced motion does too
@@ -589,7 +589,9 @@ async function start() {
             .rotateY(rnd(-0.25, 0.25)).translate(x, rad * 0.75, z - len / 2));
           z -= rnd(0.3, 0.8);
         } else { // fallen off the wall and spread across the floor, still leaning on it at the back
-          const w = 1.2, len = w / r.aspect, g = fitUV(new THREE.PlaneGeometry(w, len, 6, 8), r), p = g.attributes.position;
+          const w = 1.2, len = w / r.aspect;
+          if (z - len < -CARPET_LEN) break; // it would lie past the stretch, over the foot of the next graffiti
+          const g = fitUV(new THREE.PlaneGeometry(w, len, 6, 8), r), p = g.attributes.position;
           for (let i = 0; i < p.count; i++) {
             const u = p.getX(i) / w + 0.5;
             p.setZ(i, 0.04 * Math.sin(p.getY(i) * 5 + u * 3) + (side > 0 ? u : 1 - u) ** 3 * 0.45);
